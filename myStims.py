@@ -129,16 +129,21 @@ class featureStim():
                     win,
                     radius=dotRaduis,
                     pos=(x * self.winScale, y * self.winScale),
-                    lineColor=self.colorDict[label],
+                    lineWidth=0,
                     fillColor=self.colorDict[label],
+                    opacity=0.1,
                     units='pix',
                 )
                 self.featureDots.append(dot)
-
-    def startDrawAllFeatures(self, highlightLast=True):
-        for p in self.featureDots:
+#                    lineColor=self.colorDict[label],
+    def startDrawAllFeatures(self, highlightLast=True, gradients = False):
+        for p in self.featureDots[:-5]:
             p.autoDraw = True
             # p.draw()
+        for p,o in zip(self.featureDots[-5:],[0.2,0.4,0.6,0.8,1.0]):
+            p.autoDraw = True
+            if gradients:
+                p.opacity = o
         if highlightLast:
             highlightCircle = circle.Circle(self.win,
                                             radius=self.dotRaduis + 1,
@@ -151,6 +156,7 @@ class featureStim():
     def endDrawAllFeatures(self):
         for p in self.featureDots:
             p.autoDraw = False
+            p.opacity = 0.1
             # p.draw()
         self.win.flip()
 
@@ -164,6 +170,7 @@ class featureStim():
             units='pix',
         )
         self._highlightDot(dot)
+        self.win.flip()
         self.featureDots.append(dot)
 
     def _scaleDot(self, dot, scale, waitTime):
@@ -179,12 +186,27 @@ class featureStim():
             for _ in range(5):
                 self._scaleDot(dot, -4, intervalTime)
 
+        ######################
+        #dot.opacity = 0.3
+
 
 if __name__ == "__main__":
-    win = visual.Window([1920, 1080])
+    win = visual.Window([1000, 800])
     event.globalKeys.add(key='escape', func=core.quit, name='esc')
 
     trial = 1
+
+    def createFeatures():
+        features = []
+        for i in range(80):
+            label = random.choice([-1, 1])
+            x = random.gauss(label / 2.0, 0.2)
+            # x = random.uniform(-1, 1)
+            y = 0  # random.uniform(-1, 1)
+            features.append((x, y, label))
+        return features
+    features = createFeatures()
+    fs = featureStim(win, features=features, dotRaduis=10)
 
     while True:
         fixation = Fixation(win, 10)
@@ -199,7 +221,6 @@ if __name__ == "__main__":
             arrow = random.choice([-1, 1])
             return arrowDict[arrow]
 
-
         # l = LeftArrow(win,20)
         # l.draw(3)
         # r = RightArrow(win,20)
@@ -209,29 +230,21 @@ if __name__ == "__main__":
 
 
         countDown = CountDown(win)
+        #transport.run()
         countDown.draw(slightDraw=False)
+        #transport.pause()
 
         fixation.startDraw()
-        x = Xaxis(win)
+        x = Xaxis(win,radius=win.size[0]/2.0)
         y = Yaxis(win)
         x.startDraw()
-        y.startDraw()
+        #y.startDraw()
         #y.draw(5)
         # x.endDraw()
 
-
-        def createFeatures():
-            features = []
-            for i in range(80):
-                x = random.uniform(-1, 1)
-                y = random.uniform(-1, 1)
-                label = random.choice([-1, 1])
-                features.append((x, y, label))
-            return features
-
-        fs = featureStim(win, features=createFeatures())
-        fs.drawNewFeature((random.uniform(-1, 1), random.uniform(-1, 1), random.choice([-1, 1])))
-        fs.startDrawAllFeatures()
+        _label = random.choice([-1, 1])
+        fs.drawNewFeature((random.gauss(_label/2.0,0.2), 0, _label)) #random.uniform(-1, 1)
+        fs.startDrawAllFeatures(gradients=True)
         #core.wait(5)
         print('trial ',trial,' end')
         trial+=1
@@ -241,6 +254,6 @@ if __name__ == "__main__":
         fs.endDrawAllFeatures()
         arrow.endDraw()
         x.endDraw()
-        y.endDraw()
+        #y.endDraw()
         fixation.endDraw()
 
