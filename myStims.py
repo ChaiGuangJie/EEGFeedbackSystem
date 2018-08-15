@@ -3,6 +3,7 @@ from psychopy.visual import shape, circle
 import math
 import random
 
+__all__ = ['Fixation','RightArrow','LeftArrow','Xaxis','Yaxis','CountDown','featureStim']
 
 class ClueStim():
     def __init__(self, win, vertices, lineWidth=1.5):

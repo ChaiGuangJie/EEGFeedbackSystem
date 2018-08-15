@@ -1,8 +1,9 @@
 import socket,time,threading
 import numpy as np
 import mne
+from mne.utils import verbose
 
-basicInfoType = np.dtype([('dwSize',np.int32),('nEegChan',np.int32),('nEvtChan',np.int32),('nBlockPnts',np.int32),('nRate',np.int32),('nDataSize',np.int32)])
+basicInfoType = np.dtype([('dwSize',np.uint32),('nEegChan',np.int32),('nEvtChan',np.int),('nBlockPnts',np.int),('nRate',np.int),('nDataSize',np.int)])
 headType = np.dtype([('IDString','>S4'),('Code','>u2'),('Request','>u2'),('BodySize','>u4')])
 
 def _buffer_recv_worker(rt_client, nchan):
@@ -52,8 +53,10 @@ def _recv_head_raw(sock):
     return head, buff
 
 
-class ScanClient():
-    def __init__(self,host,port,timeout=10):
+class ScanClient(object):
+
+    @verbose
+    def __init__(self,host,port,timeout=10,verbose=None):
         self._host = host,
         self._port = port,
         self._timeout = timeout
@@ -88,6 +91,7 @@ class ScanClient():
         self.TransPortActivate = False
         self._recv_thread = None
 
+        self.verbose = verbose
 
     def get_measurement_info(self):
         """Get the measurement information.
@@ -103,7 +107,7 @@ class ScanClient():
         head,buffer = _recv_head_raw(self._sock)
 
         #todo 判断是否是返回的basicInfo
-        basicInfo = np.frombuffer(buffer,basicInfoType)
+        basicInfo = np.array(buffer, basicInfoType)
         nEegChan = basicInfo['nEegChan'] # EEG通道数 67
         nEvtChan = basicInfo['nEvtChan'] #event 通道个数 1
         nBlockPnts = basicInfo['nBlockPnts'] #block点数 40
@@ -133,7 +137,7 @@ class ScanClient():
                     'EMG1','EMG2',
                     'STI 014']
 
-        return mne.create_info(nEegChan + nEvtChan,nRate,'eeg') #todo 可以通过读取ast文件详细赋值或手动输入
+        return mne.create_info(ch_names, nRate, 'eeg') #todo 可以通过读取ast文件详细赋值或手动输入 #nEegChan + nEvtChan
 
 
     def start_receive_thread(self,nchan):
@@ -151,6 +155,37 @@ class ScanClient():
 
             self._recv_thread = threading.Thread(target=_buffer_recv_worker,args=(self, nchan))
             self._recv_thread.start()
+
+    # todo 客户端单方面无法只退出接收线程，只能主动请求断开链接后，接收线程自动退出
+    def stop_receive_thread(self, stop_measurement=True):
+        """Stop the receive thread.
+
+        Parameters
+        ----------
+        stop_measurement : bool
+            Also stop the measurement.
+        """
+        if stop_measurement:
+            self.stop_measurement()
+
+        if self._recv_thread is not None:
+            self._recv_thread.join() #todo 读取线程如何强制结束？
+            self._recv_thread = None
+
+    def stop_recv_and_connect(self):
+
+        self.stop_measurement()
+        if self._recv_thread is not None:
+            self._recv_thread.join()
+            self._recv_thread = None
+
+        self._sock.close()
+
+    def stop_measurement(self):
+        """Stop the measurement."""
+        self.stop_sending_data()
+        time.sleep(0.1)
+        self._close_connect()
 
     def raw_buffers(self,nchan):
         """Return an iterator over raw buffers.
@@ -173,7 +208,12 @@ class ScanClient():
                 break
 
     def read_raw_buffer(self,nchan):
-        head,buffer = _recv_head_raw(self._sock)
+        try:
+            head,buffer = _recv_head_raw(self._sock)
+        except RuntimeError as err:
+            print(err)
+            return None
+
         if head[0][2] == 2:
             buffer_array = np.frombuffer(buffer,'<i4').reshape(-1, nchan).T
         elif head[0][2] == 1:
@@ -219,11 +259,10 @@ class ScanClient():
         self._sock.sendall(command.tobytes())
 
     def _close_connect(self):
-        self._send_command(self.commandDict['Request_to_Stop_Sending_Data'])
-        time.sleep(0.1)  # todo 是否需要等服务器回应？
+        # self._send_command(self.commandDict['Request_to_Stop_Sending_Data'])
+        # time.sleep(0.1)  # 是否需要等服务器回应？
         self._send_command(self.commandDict['Closing_Up_Connection'])
-        time.sleep(0.1)  # todo 是否需要等服务器回应？
-        self._sock.close()
+
 
     def request_EDF_header(self):
         self._send_command(self.commandDict['Request_for_EDF_Header'])
@@ -238,10 +277,11 @@ class ScanClient():
 
 
 if __name__ == '__main__':
-    c = ScanClient('10.0.180.151',4000,5)
+    c = ScanClient('10.0.180.151',4000)
     # c = ScanClient('127.0.0.1',5555,5)
+    info = c.get_measurement_info()
 
-    c.start_receive_thread(68)
+    c.start_receive_thread(info['nchan'])
     def show_rect(buffer):
         # print([b*0.00015 for b in buffer])
         print(buffer)
@@ -261,9 +301,19 @@ if __name__ == '__main__':
     # print(buff)
     # print(test.dtype)
     # print(test)
+
     wait = input('input something to end:')
-    try:
-        c._close_connect()
-    except ConnectionAbortedError:
-        print('服务器已断开链接！')
+    c.stop_recv_and_connect()
+    # try:
+    #     # c.stop_receive_thread(stop_measurement=True)
+    #     # c._send_command(c.commandDict['Request_to_Stop_Sending_Data'])
+    #     # time.sleep(3)
+    #     # print('stop recvd!')
+    #     # c._close_connect()
+    #     # time.sleep(1)
+    #     # print('stop connect!')
+    #     # c._sock.close()
+    # except ConnectionAbortedError:
+    #     print('服务器已断开链接！')
+    print('end')
 
