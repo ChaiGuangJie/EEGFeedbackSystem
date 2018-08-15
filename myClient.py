@@ -1,12 +1,56 @@
 import socket,time,threading
 import numpy as np
-from mne.realtime.client import _buffer_recv_worker
+import mne
 
+basicInfoType = np.dtype([('dwSize',np.int32),('nEegChan',np.int32),('nEvtChan',np.int32),('nBlockPnts',np.int32),('nRate',np.int32),('nDataSize',np.int32)])
 headType = np.dtype([('IDString','>S4'),('Code','>u2'),('Request','>u2'),('BodySize','>u4')])
 
-# class CommandHeader():
-#     def __init__(self,IDString,Code,Request,BodySize):
-#         self.headCommand = np.array([(IDString,Code,Request,BodySize)],dtype = headType)
+def _buffer_recv_worker(rt_client, nchan):
+    """Worker thread that constantly receives buffers."""
+    try:
+        for raw_buffer in rt_client.raw_buffers(nchan):
+            rt_client._push_raw_buffer(raw_buffer)
+    except RuntimeError as err:
+        # something is wrong, the server stopped (or something)
+        rt_client._recv_thread = None
+        print('Buffer receive thread stopped: %s' % err)
+
+def _recv_head_raw(sock):
+    """Read a head and the associated data from a socket.
+
+    Parameters
+    ----------
+    sock : socket.socket
+        The socket from which to read the tag.
+
+    Returns
+    -------
+    head : array of head
+        The head.
+    buff : str
+        The raw data of the tag (including header).
+    """
+    s = sock.recv(12)
+    if len(s) != 12:
+        raise RuntimeError('Not enough bytes received, something is wrong. '
+                           'Make sure the server is running.')
+    head = np.frombuffer(s, headType)
+    n_received = 0
+    rec_buff = []  # 只包含data body,不含header
+    while n_received < int(head[0]['BodySize']):
+        n_buffer = min(4096, int(head[0]['BodySize']) - n_received)
+        this_buffer = sock.recv(n_buffer)
+        rec_buff.append(this_buffer)
+        n_received += len(this_buffer)
+
+    if n_received != int(head[0]['BodySize']):
+        raise RuntimeError('Not enough bytes received, something is wrong. '
+                           'Make sure the server is running.')
+
+    buff = b''.join(rec_buff)
+
+    return head, buff
+
 
 class ScanClient():
     def __init__(self,host,port,timeout=10):
@@ -25,6 +69,7 @@ class ScanClient():
             'Request_for_AST_Setup_File': self._format_head('CTRL', 3, 2, 0),
             'Request_to_Start_Sending_Data': self._format_head('CTRL', 3, 3, 0),
             'Request_to_Stop_Sending_Data': self._format_head('CTRL', 3, 4, 0),
+            'Request_for_basic_info':self._format_head('CTRL', 3, 5, 0),
             'Neuroscan_16bit_Raw_Data':self._format_head('Data',2,1,0),
             'Neuroscan_32bit_Raw_Data': self._format_head('Data', 2, 2, 0)
         }
@@ -42,9 +87,56 @@ class ScanClient():
         self._recv_callbacks = list()
         self.TransPortActivate = False
         self._recv_thread = None
-        self.nchan = 67
 
-    def start_receive_thread(self):
+
+    def get_measurement_info(self):
+        """Get the measurement information.
+
+        Returns
+        -------
+        info : dict
+            The measurement information.
+        """
+        #必须有个channel是trigger 且在ch_names里标识
+        cmd =self.commandDict['Request_for_basic_info']
+        self._send_command(cmd) #todo 先获取信息，再获取数据
+        head,buffer = _recv_head_raw(self._sock)
+
+        #todo 判断是否是返回的basicInfo
+        basicInfo = np.frombuffer(buffer,basicInfoType)
+        nEegChan = basicInfo['nEegChan'] # EEG通道数 67
+        nEvtChan = basicInfo['nEvtChan'] #event 通道个数 1
+        nBlockPnts = basicInfo['nBlockPnts'] #block点数 40
+        nRate = basicInfo['nRate'] #采样率 1000
+        nDataSize = basicInfo['nDataSize'] #一个数据占用字节数 4
+
+        ch_names = ['FP1', 'FPZ', 'FP2',
+                    'AF3', 'AF4',
+                    'F7', 'F5', 'F3', 'F1', 'FZ', 'F2', 'F4', 'F6', 'F8',
+                    'FT7',
+                    'FC5', 'FC3', 'FC1', 'FCZ', 'FC2', 'FC4', 'FC6',
+                    'FT8',
+                    'T7',
+                    'C5', 'C3', 'C1', 'CZ','C2', 'C4', 'C6',
+                    'T8',
+                    'HEO',
+                    'TP7',
+                    'CP5', 'CP3', 'CP1', 'CPZ', 'CP2', 'CP4', 'CP6',
+                    'TP8',
+                    'M2',
+                    'P7', 'P5', 'P3', 'P1', 'PZ', 'P2', 'P4', 'P6', 'P8',
+                    'PO7', 'PO5', 'PO3','POZ', 'PO4', 'PO6', 'PO8',
+                    'CB1',
+                    'O1', 'OZ', 'O2',
+                    'CB2',
+                    'VEO',
+                    'EMG1','EMG2',
+                    'STI 014']
+
+        return mne.create_info(nEegChan + nEvtChan,nRate,'eeg') #todo 可以通过读取ast文件详细赋值或手动输入
+
+
+    def start_receive_thread(self,nchan):
         """Start the receive thread.
 
         If the measurement has not been started, it will also be started.
@@ -57,21 +149,10 @@ class ScanClient():
         if self._recv_thread is None:
             #self.start_sending_data()
 
-            self._recv_thread = threading.Thread(target=self._buffer_recv_worker)
+            self._recv_thread = threading.Thread(target=_buffer_recv_worker,args=(self, nchan))
             self._recv_thread.start()
 
-    def _buffer_recv_worker(self):
-        """Worker thread that constantly receives buffers."""
-        try:
-            for raw_buffer in self.raw_buffers():
-                self._push_raw_buffer(raw_buffer)
-        except RuntimeError as err:
-            # something is wrong, the server stopped (or something)
-            self._recv_thread = None
-            self.stop_sending_data() #todo 是否需要？
-            print('Buffer receive thread stopped: %s' % err)
-
-    def raw_buffers(self):
+    def raw_buffers(self,nchan):
         """Return an iterator over raw buffers.
 
         Parameters
@@ -85,37 +166,23 @@ class ScanClient():
             Generator for iteration over raw buffers.
         """
         while True:
-            raw_buffer = self.read_raw_buffer()
+            raw_buffer = self.read_raw_buffer(nchan)
             if raw_buffer is not None: #TODO 何时为None
                 yield raw_buffer
             else:
                 break
 
-    def read_raw_buffer(self):
-        try:
-            s = self._sock.recv(12) #12 bytes in header
-        except ConnectionAbortedError:
-            return None
-        if len(s) != 12:
-            raise RuntimeError('Not enough bytes received, something is wrong. '
-                               'Make sure the server is running.')
-        head = np.frombuffer(s, headType)
-        n_received = 0
-        rec_buff = [] #只包含data body,不含header
-        while n_received < int(head[0]['BodySize']):
-            n_buffer = min(4096, int(head[0]['BodySize']) - n_received)
-            this_buffer = self._sock.recv(n_buffer)
-            rec_buff.append(this_buffer)
-            n_received += len(this_buffer)
+    def read_raw_buffer(self,nchan):
+        head,buffer = _recv_head_raw(self._sock)
+        if head[0][2] == 2:
+            buffer_array = np.frombuffer(buffer,'<i4').reshape(-1, nchan).T
+        elif head[0][2] == 1:
+            buffer_array = np.frombuffer(buffer, '<i2').reshape(-1, nchan).T
+        else:
+            buffer_array =None
 
-        if n_received != int(head[0]['BodySize']):
-            raise RuntimeError('Not enough bytes received, something is wrong. '
-                               'Make sure the mne_rt_server is running.')
-        buffer = b''.join(rec_buff)
-        # buffer = np.frombuffer(b''.join(rec_buff), '<i4')
-        # buffer = buffer.reshape(-1, self.nchan).T
-        return buffer  #{'head' : head, 'buffer' : buffer}
-        #todo 必须返回shape=(nchan, n_times)格式的数据 其中必须有个channel是trigger 且在ch_names里标识
+        return buffer_array
+        #必须返回shape=(nchan, n_times)格式的数据
 
     def register_receive_callback(self, callback):
         """Register a raw buffer receive callback.
@@ -174,7 +241,7 @@ if __name__ == '__main__':
     c = ScanClient('10.0.180.151',4000,5)
     # c = ScanClient('127.0.0.1',5555,5)
 
-    c.start_receive_thread()
+    c.start_receive_thread(68)
     def show_rect(buffer):
         # print([b*0.00015 for b in buffer])
         print(buffer)
@@ -182,8 +249,8 @@ if __name__ == '__main__':
         # print(buffer['head'][0][2]==2)
     c.register_receive_callback(show_rect)
     time.sleep(1)
-    # test = np.array([('CTRL',3,3,0)],dtype=headType)
-    test = np.array([('CTRL',3,5,0)],dtype=headType)#basic info
+    test = np.array([('CTRL',3,3,0)],dtype=headType)#start sending data
+    # test = np.array([('CTRL',3,5,0)],dtype=headType)#basic info
 
     # test = b'\x00\x01\x00\x02\x00\x00\x00\x00'
     time.sleep(5)
