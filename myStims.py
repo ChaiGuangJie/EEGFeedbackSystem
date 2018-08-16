@@ -187,8 +187,9 @@ class featureStim():
             for _ in range(5):
                 self._scaleDot(dot, -4, intervalTime)
 
-        ######################
-        #dot.opacity = 0.3
+    def removeLastFeature(self):
+        lastFeature = self.featureDots.pop()
+        lastFeature.autoDraw = False
 
 
 if __name__ == "__main__":
@@ -250,7 +251,12 @@ if __name__ == "__main__":
         print('trial ',trial,' end')
         trial+=1
 
-        event.waitKeys(keyList=['space'])
+        allKeys = event.waitKeys(keyList=['left', 'right'])
+        for thisKey in allKeys:
+            if thisKey == 'left':
+                fs.removeLastFeature()
+            elif thisKey == 'right':
+                break
 
         fs.endDrawAllFeatures()
         arrow.endDraw()

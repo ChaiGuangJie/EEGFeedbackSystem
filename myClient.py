@@ -93,6 +93,9 @@ class ScanClient(object):
 
         self.verbose = verbose
 
+        self.current_trigger = None
+        self.trigger_lock = threading.Lock()
+
     def get_measurement_info(self):
         """Get the measurement information.
 
@@ -220,9 +223,17 @@ class ScanClient(object):
             buffer_array = np.frombuffer(buffer, '<i2').reshape(-1, nchan).T
         else:
             buffer_array =None
-
+        #todo 手动打标签
+        if buffer_array and self.current_trigger is not None:
+            buffer_array[-1,0] = self.current_trigger
+            self.set_event_trigger(None)
         return buffer_array
         #必须返回shape=(nchan, n_times)格式的数据
+
+    def set_event_trigger(self,trigger):
+        self.trigger_lock.acquire()
+        self.current_trigger = trigger
+        self.trigger_lock.release()
 
     def register_receive_callback(self, callback):
         """Register a raw buffer receive callback.
