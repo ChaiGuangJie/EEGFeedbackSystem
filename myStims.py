@@ -117,11 +117,13 @@ class featureStim():
         self.features = features
         self.dotRaduis = dotRaduis
         self.featureDots = []
-        self.positiveColor = 'red'
-        self.negativeColor = 'blue'
+        # self.positiveColor = 'red'
+        # self.negativeColor = 'blue'
         self.colorDict = {
-            1: self.positiveColor,
-            -1: self.negativeColor
+            -1: 'blue',
+            1: 'red',
+            2: 'green',
+            3: 'yellow'
         }
         self.winScale = win.size.min() / 2.0
         if self.features:

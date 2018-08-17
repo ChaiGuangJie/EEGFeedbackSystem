@@ -33,7 +33,7 @@ def _recv_head_raw(sock):
     """
     s = sock.recv(12)
     if len(s) != 12:
-        raise RuntimeError('Not enough bytes received, something is wrong. '
+        raise RuntimeError('Not enough head bytes received, something is wrong. '
                            'Make sure the server is running.')
     head = np.frombuffer(s, headType)
     n_received = 0
@@ -175,7 +175,7 @@ class ScanClient(object):
             self._recv_thread.join() #todo 读取线程如何强制结束？
             self._recv_thread = None
 
-    def stop_recv_and_connect(self):
+    def stop_recv_and_disconnect(self):
 
         self.stop_measurement()
         if self._recv_thread is not None:
@@ -224,15 +224,21 @@ class ScanClient(object):
         else:
             buffer_array =None
         #todo 手动打标签
-        if buffer_array and self.current_trigger is not None:
-            buffer_array[-1,0] = self.current_trigger
-            self.set_event_trigger(None)
+        if buffer_array is not None:
+            buffer_array = buffer_array.copy()
+            buffer_array = buffer_array * 0.00015
+            buffer_array[-1,:] = 0
+            if self.current_trigger is not None:
+                buffer_array[-1,0:3] = self.current_trigger
+                # print('buffer_array',buffer_array[-1,0])
+                self.set_event_trigger(None)
         return buffer_array
         #必须返回shape=(nchan, n_times)格式的数据
 
     def set_event_trigger(self,trigger):
         self.trigger_lock.acquire()
         self.current_trigger = trigger
+        # print('current_trigger',self.current_trigger)
         self.trigger_lock.release()
 
     def register_receive_callback(self, callback):
