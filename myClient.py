@@ -3,7 +3,7 @@ import numpy as np
 import mne
 from mne.utils import verbose
 
-basicInfoType = np.dtype([('dwSize',np.uint32),('nEegChan',np.int32),('nEvtChan',np.int),('nBlockPnts',np.int),('nRate',np.int),('nDataSize',np.int)])
+basicInfoType = np.dtype([('dwSize',np.uint32),('nEegChan',np.int32),('nEvtChan',np.int32),('nBlockPnts',np.int32),('nRate',np.int32),('nDataSize',np.int32),('fResolution',np.float32)])
 headType = np.dtype([('IDString','>S4'),('Code','>u2'),('Request','>u2'),('BodySize','>u4')])
 
 def _buffer_recv_worker(rt_client, nchan):
@@ -111,11 +111,13 @@ class ScanClient(object):
 
         #todo 判断是否是返回的basicInfo
         basicInfo = np.array(buffer, basicInfoType)
+        print('basicInfo:',basicInfo)
         nEegChan = basicInfo['nEegChan'] # EEG通道数 67
         nEvtChan = basicInfo['nEvtChan'] #event 通道个数 1
         nBlockPnts = basicInfo['nBlockPnts'] #block点数 40
         nRate = basicInfo['nRate'] #采样率 1000
         nDataSize = basicInfo['nDataSize'] #一个数据占用字节数 4
+        fResolution = basicInfo['fResolution'] = 0.00014827
 
         ch_names = ['FP1', 'FPZ', 'FP2',
                     'AF3', 'AF4',
@@ -294,24 +296,25 @@ class ScanClient(object):
 
 
 if __name__ == '__main__':
-    c = ScanClient('10.0.180.151',4000)
-    # c = ScanClient('127.0.0.1',5555,5)
-    info = c.get_measurement_info()
-
-    c.start_receive_thread(info['nchan'])
+    # c = ScanClient('10.0.180.151',4000)
+    c = ScanClient('127.0.0.1',5555)
     def show_rect(buffer):
         # print([b*0.00015 for b in buffer])
         print(buffer)
         print(len(buffer))
         # print(buffer['head'][0][2]==2)
     c.register_receive_callback(show_rect)
+    info = c.get_measurement_info()
+
+    # c.start_receive_thread(info['nchan'])
+
     time.sleep(1)
     test = np.array([('CTRL',3,3,0)],dtype=headType)#start sending data
     # test = np.array([('CTRL',3,5,0)],dtype=headType)#basic info
 
     # test = b'\x00\x01\x00\x02\x00\x00\x00\x00'
-    time.sleep(5)
-    c._send_command(test)
+    # time.sleep(5)
+    # c._send_command(test)
     # time.sleep(1)
     # head,buff = c._recv_head_raw()
     # print(head)
@@ -320,7 +323,7 @@ if __name__ == '__main__':
     # print(test)
 
     wait = input('input something to end:')
-    c.stop_recv_and_connect()
+    c.stop_recv_and_disconnect()
     # try:
     #     # c.stop_receive_thread(stop_measurement=True)
     #     # c._send_command(c.commandDict['Request_to_Stop_Sending_Data'])

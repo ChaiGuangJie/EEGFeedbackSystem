@@ -10,18 +10,18 @@ from mne import Epochs, pick_types, find_events
 
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from myStims import *
-import random
+import random,time
 import numpy as np
 
 
 from psychopy import visual,core,event
 
 class FeedbackPipline():
-    def __init__(self):
+    def __init__(self,host = '10.0.180.151',port = 4000):
         self.tmin, self.tmax = -0.2, 2.
         self.event_id = dict(left=2, right=3)
 
-        self.scanClient = ScanClient('10.0.180.151',4000)
+        self.scanClient = ScanClient(host,port)
 
         self.info = self.scanClient.get_measurement_info()
 
@@ -49,7 +49,15 @@ class FeedbackPipline():
         self.overall_scale = 1
 
     def _save_raw_file(self):
-        pass #todo 绑定全局键
+        from psychopy.gui import fileSaveDlg
+        import scipy.io as io
+
+        default_name = time.strftime("eeg_epoch_%Y_%m_%d_%Hh%Mm%Ss.mat", time.localtime())
+        fullPath = fileSaveDlg(initFilePath='D:/temp/EEG_DATA',initFileName=default_name,
+                    prompt='保存 EEG Epoch 数据到.mat 文件',allowed="Matlab file (*.mat)")
+        #todo 将文件写入
+        io.savemat(fullPath,{'epoch':self.record_array,'info':self.info})
+        print('save file')
 
     def run_offline(self):
         pass #todo 先离线采集几组数据并保存
@@ -195,11 +203,17 @@ class FeedbackPipline():
     #     self._set_record_flag(False)
 
 if __name__ == '__main__':
+    pipline = None
     try:
-        pipline = FeedbackPipline()
-        pipline.run_online()
+        pipline = FeedbackPipline(host='127.0.0.1',port = 5555)
+        # pipline.run_online()
+        pipline._save_raw_file()
     finally:
-        pipline.rt_epochs.stop(stop_receive_thread=True,stop_measurement=True)
+        if pipline is not None:
+            from psychopy import core
+            pipline.win.close()
+            core.quit()
+            pipline.rt_epochs.stop(stop_receive_thread=True,stop_measurement=True)
 
 
 
