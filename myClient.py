@@ -96,6 +96,10 @@ class ScanClient(object):
         self.current_trigger = None
         self.trigger_lock = threading.Lock()
 
+        self.basicInfo = None
+
+        self.fResolution = 0.00015
+
     def get_measurement_info(self):
         """Get the measurement information.
 
@@ -110,14 +114,15 @@ class ScanClient(object):
         head,buffer = _recv_head_raw(self._sock)
 
         #todo 判断是否是返回的basicInfo
-        basicInfo = np.array(buffer, basicInfoType)
-        print('basicInfo:',basicInfo)
-        nEegChan = basicInfo['nEegChan'] # EEG通道数 67
-        nEvtChan = basicInfo['nEvtChan'] #event 通道个数 1
-        nBlockPnts = basicInfo['nBlockPnts'] #block点数 40
-        nRate = basicInfo['nRate'] #采样率 1000
-        nDataSize = basicInfo['nDataSize'] #一个数据占用字节数 4
-        fResolution = basicInfo['fResolution'] = 0.00014827
+        self.basicInfo = np.array(buffer, basicInfoType)
+        print('basicInfo:',self.basicInfo)
+        nEegChan = self.basicInfo['nEegChan'] # EEG通道数 67
+        nEvtChan = self.basicInfo['nEvtChan'] #event 通道个数 1
+        nBlockPnts = self.basicInfo['nBlockPnts'] #block点数 40
+        nRate = self.basicInfo['nRate'] #采样率 1000
+        nDataSize = self.basicInfo['nDataSize'] #一个数据占用字节数 4
+        fResolution = self.basicInfo['fResolution'] = 0.00014827
+        self.fResolution = fResolution
 
         ch_names = ['FP1', 'FPZ', 'FP2',
                     'AF3', 'AF4',
@@ -141,8 +146,14 @@ class ScanClient(object):
                     'VEO',
                     'EMG1','EMG2',
                     'STI 014']
-
-        return mne.create_info(ch_names, nRate, 'eeg') #todo 可以通过读取ast文件详细赋值或手动输入 #nEegChan + nEvtChan
+        ch_types = ['eeg']*67
+        ch_types.append('stim')
+        # ch_types[32] = 'eog'
+        # ch_types[64] = 'eog'
+        ch_types[42] = 'eog'
+        ch_types[65] = 'eog'
+        ch_types[66] = 'eog'
+        return mne.create_info(ch_names, nRate, ch_types) #todo 可以通过读取ast文件详细赋值或手动输入 #nEegChan + nEvtChan
 
 
     def start_receive_thread(self,nchan):
@@ -158,7 +169,7 @@ class ScanClient(object):
         if self._recv_thread is None:
             #self.start_sending_data()
 
-            self._recv_thread = threading.Thread(target=_buffer_recv_worker,args=(self, nchan))
+            self._recv_thread = threading.Thread(target=_buffer_recv_worker,args=(self, nchan),daemon=True)
             self._recv_thread.start()
 
     # todo 客户端单方面无法只退出接收线程，只能主动请求断开链接后，接收线程自动退出
@@ -174,7 +185,8 @@ class ScanClient(object):
             self.stop_measurement()
 
         if self._recv_thread is not None:
-            self._recv_thread.join() #todo 读取线程如何强制结束？
+            # self._recv_thread._stop()
+            self._recv_thread.join(0.1) #todo 读取线程如何强制结束？
             self._recv_thread = None
 
     def stop_recv_and_disconnect(self):
@@ -215,7 +227,7 @@ class ScanClient(object):
     def read_raw_buffer(self,nchan):
         try:
             head,buffer = _recv_head_raw(self._sock)
-        except RuntimeError as err:
+        except Exception as err:
             print(err)
             return None
 
@@ -228,7 +240,7 @@ class ScanClient(object):
         #todo 手动打标签
         if buffer_array is not None:
             buffer_array = buffer_array.copy()
-            buffer_array = buffer_array * 0.00015
+            buffer_array = buffer_array * self.fResolution
             buffer_array[-1,:] = 0
             if self.current_trigger is not None:
                 buffer_array[-1,0:3] = self.current_trigger
@@ -240,7 +252,7 @@ class ScanClient(object):
     def set_event_trigger(self,trigger):
         self.trigger_lock.acquire()
         self.current_trigger = trigger
-        # print('current_trigger',self.current_trigger)
+        print('current_trigger',self.current_trigger)
         self.trigger_lock.release()
 
     def register_receive_callback(self, callback):

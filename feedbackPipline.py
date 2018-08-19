@@ -12,6 +12,7 @@ from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from myStims import *
 import random,time
 import numpy as np
+import scipy.io as io
 
 
 from psychopy import visual,core,event
@@ -25,8 +26,10 @@ class FeedbackPipline():
 
         self.info = self.scanClient.get_measurement_info()
 
+        self.scanClient.register_receive_callback(self._record_raw_buffer)
+
         picks = mne.pick_types(self.info, meg=False, eeg=True, eog=False,
-                               stim=True, exclude=self.info['bads'])
+                               stim=True, exclude=['eog','stim'])
 
         self.rt_epochs = RtEpochs(self.scanClient, self.event_id, self.tmin, self.tmax,
                              picks=picks, stim_channel='STI 014', isi_max=60 * 60.)
@@ -38,26 +41,33 @@ class FeedbackPipline():
         # self.features = None #保存所有特征点
 
         self.win = visual.Window([1000, 800])
-        event.globalKeys.add(key='escape', func=core.quit, name='esc')
+        event.globalKeys.add(key='escape', func=self.quit, name='quit')
+        event.globalKeys.add(key='s',modifiers=['ctrl'],func=self.save_raw_file,name='name')
 
         self.nOfflineTrial = 20
-        self.nOnlineTrial = 10
+        self.nOnlineTrial = 2
 
         self.record_array = None
         # self.record_flag = False
 
         self.overall_scale = 1
 
-    def _save_raw_file(self):
-        from psychopy.gui import fileSaveDlg
-        import scipy.io as io
+        self.saveFileName = None
 
+    def save_raw_file(self,saveAtMoment=False):
+        from psychopy.gui import fileSaveDlg
+        self.scanClient.stop_sending_data()
         default_name = time.strftime("eeg_epoch_%Y_%m_%d_%Hh%Mm%Ss.mat", time.localtime())
-        fullPath = fileSaveDlg(initFilePath='D:/temp/EEG_DATA',initFileName=default_name,
+        fullPath = fileSaveDlg(initFilePath="D:\\temp\\EEG_DATA",initFileName=default_name,
                     prompt='保存 EEG Epoch 数据到.mat 文件',allowed="Matlab file (*.mat)")
-        #todo 将文件写入
-        io.savemat(fullPath,{'epoch':self.record_array,'info':self.info})
-        print('save file')
+        self.saveFileName = fullPath
+        if saveAtMoment:
+            self._save_raw_file(fullPath)
+        # self.scanClient.start_sending_data()
+    def _save_raw_file(self,fullFileName):
+        if fullFileName is not None: #todo 应该要等到全部缓存数据都保存进self.record_array再写入文件
+            io.savemat(fullFileName,{'epoch':self.record_array,'info':self.scanClient.basicInfo})
+            print('save file')
 
     def run_offline(self):
         pass #todo 先离线采集几组数据并保存
@@ -72,9 +82,12 @@ class FeedbackPipline():
         x = Xaxis(self.win, radius=self.win.size[0] / 2.0)
         # y = Yaxis(self.win, radius=self.win.size[1] / 2.0)
         arrow_dict = {'right': RightArrow(self.win, 20), 'left': LeftArrow(self.win, 20)}
-        countDown = CountDown(self.win)
+        countDown = CountDown(self.win,duration=4)
 
         #todo 如何更新？(每十次以后用新样本更新csp lda?)
+        self.save_raw_file()
+        DrawTextStim(self.win,'按空格键开始')
+        WaitOneKeyPress('space')
         for i in range(self.nOnlineTrial):
             self.scanClient.start_sending_data() #开始发送数据
             #self.begin_record()
@@ -88,7 +101,7 @@ class FeedbackPipline():
             arrow.draw(2)
 
             self.scanClient.set_event_trigger(label) #手动打标签
-            countDown.draw(duration=0.12,slightDraw=False)
+            countDown.draw(slightDraw=False)
 
             new_feature = self.get_new_feature(label)
             self.scanClient.stop_sending_data() #暂停发送数据
@@ -99,7 +112,7 @@ class FeedbackPipline():
 
             fs.drawNewFeature(new_feature)
 
-            fs.endDrawAllFeatures()
+            fs.startDrawAllFeatures(gradients=True)
 
             #self.end_record()
             allKeys = event.waitKeys(keyList=['left', 'right'])
@@ -115,6 +128,12 @@ class FeedbackPipline():
             # y.endDraw()
             fixation.endDraw()
 
+        if self.saveFileName is not None:
+            self._save_raw_file(self.saveFileName)
+        else:
+            self.save_raw_file()
+
+        self.quit()
 
     def run(self):
 
@@ -123,14 +142,6 @@ class FeedbackPipline():
     def _createFeatures(self):
         #读取离线数据并生成features
         features = []
-        # for i in range(20):
-        #     # label = random.choice([-1, 1])
-        #     label = random.choice(list(self.event_id.values()))
-        #     mean = np.mean(list(self.event_id.values()))
-        #     x = random.gauss(label - mean, 0.2)
-        #     # x = random.uniform(-1, 1)
-        #     y = 0  # random.uniform(-1, 1)
-        #     features.append((x, y, label))
         subject = 2
         runs = [4, 8, 12]  # Motor imagery: left vs right hand
 
@@ -176,13 +187,14 @@ class FeedbackPipline():
         if self.record_array is None:
             self.record_array = raw_buffer
         else:
-            self.record_array = np.concatenate((self.record_array, raw_buffer.T), axis=1)
+            self.record_array = np.concatenate((self.record_array, raw_buffer), axis=1)
 
 
     def get_new_feature(self,label):#todo 新特征如果太大 应缩小到适应屏幕边框
         (epoch, _label) = self.rt_epochs.next(return_event_id=True) #todo 怎么结束
         if label != _label:
             raise RuntimeError('数据读取没有同步!')
+        epoch = epoch[:-1,:]
         epoch = epoch[np.newaxis, :]
         _start = round(epoch.shape[-1] * 0.7 / 4)
         _stop = round(epoch.shape[-1] * 1.8 / 4)
@@ -192,7 +204,11 @@ class FeedbackPipline():
         feature_y = 0
         return (feature_x/self.overall_scale,feature_y,_label)
 
-
+    def quit(self):
+        self.scanClient.unregister_receive_callback(self._record_raw_buffer)
+        self.rt_epochs.stop(stop_receive_thread=True, stop_measurement=True)
+        self.win.close()
+        core.quit()
     # def _set_record_flag(self,flag):
     #     self.record_flag = flag
     #
@@ -203,17 +219,44 @@ class FeedbackPipline():
     #     self._set_record_flag(False)
 
 if __name__ == '__main__':
-    pipline = None
+
+    # pipline = None
     try:
-        pipline = FeedbackPipline(host='127.0.0.1',port = 5555)
-        # pipline.run_online()
-        pipline._save_raw_file()
+        pipline = FeedbackPipline()
+        pipline.run_online()
     finally:
-        if pipline is not None:
-            from psychopy import core
-            pipline.win.close()
-            core.quit()
-            pipline.rt_epochs.stop(stop_receive_thread=True,stop_measurement=True)
+        pass
+    '''
+    # pipline = FeedbackPipline(host='127.0.0.1',port = 5555)
+    pipline.rt_epochs.start()
+    # pipline.scanClient.register_receive_callback(pipline._record_raw_buffer)
+    # time.sleep(3)
+    pipline.scanClient.start_sending_data()
+    features = pipline._createFeatures()
+    fs = featureStim(pipline.win, features=features, dotRaduis=10)  # features=features
+    while True:
+        fs.startDrawAllFeatures()
+        #allKeys = event.waitKeys(keyList=['left', 'right'])
+        # for thisKey in allKeys:
+        #     if thisKey == 'left':
+        #         fs.removeLastFeature()
+        #     elif thisKey == 'right':
+        #         break
+        allKeys = event.waitKeys(keyList=['left', 'right','up'])
+        for thisKey in allKeys:
+            if thisKey == 'left':
+                fs.removeLastFeature()
+            elif thisKey == 'right':
+                break
+            elif thisKey == 'up':
+                print('top')
+                pipline.scanClient.set_event_trigger(1)
+        fs.endDrawAllFeatures()
+        time.sleep(3)
+        # self.end_record()
+'''
+
+
 
 
 

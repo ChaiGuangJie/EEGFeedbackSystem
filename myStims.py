@@ -3,7 +3,7 @@ from psychopy.visual import shape, circle
 import math
 import random
 
-__all__ = ['Fixation','RightArrow','LeftArrow','Xaxis','Yaxis','CountDown','featureStim']
+__all__ = ['Fixation','RightArrow','LeftArrow','Xaxis','Yaxis','CountDown','featureStim','DrawTextStim','WaitOneKeyPress']
 
 class ClueStim():
     def __init__(self, win, vertices, lineWidth=1.5):
@@ -64,13 +64,13 @@ def Yaxis(win, radius=None):
 
 
 class CountDown():
-    def __init__(self, win):
+    def __init__(self, win,duration=2):
         self.win = win
-        self.degree = 2 * math.pi / 60
+        self.degree = 2 * math.pi / 60 / duration
         self.radius = 20
         self.pointSegments = []
 
-        for i in range(61):
+        for i in range(60*duration+1):
             x = self.radius * math.sin(i * self.degree)
             y = self.radius * math.cos(i * self.degree)
             self.pointSegments.append((x, y))
@@ -92,18 +92,17 @@ class CountDown():
             lastY = y
             self.pathSegments.append(path)
 
-    def draw(self, duration=0.06,slightDraw = False):  # todo 参数改为持续时间
+    def draw(self,slightDraw = False):  # todo 参数改为持续时间
+        pathLen = len(self.pathSegments)
         if slightDraw:
             for s in self.pathSegments:
                 s.draw()
                 self.win.flip()
-                core.wait(duration)  # todo 延时不准确，改为控制度数
-
+                # core.wait(refreshRate)  # todo 延时不准确，改为控制度数
         else:
-            pathLen = len(self.pathSegments)
             for ptr in range(pathLen):
                 self._drawAllSegment(self.pathSegments[:ptr + 1])
-                core.wait(duration)  # todo 延时不准确，改为控制度数
+                # core.wait(refreshRate)  # todo 延时不准确，改为控制度数
 
     def _drawAllSegment(self, allSegment):
         for s in allSegment:
@@ -193,6 +192,16 @@ class featureStim():
         lastFeature = self.featureDots.pop()
         lastFeature.autoDraw = False
 
+def DrawTextStim(win,text):
+    text = visual.TextStim(win,text=text)
+    text.draw()
+    win.flip()
+
+def WaitOneKeyPress(key):
+    allKeys = event.waitKeys(keyList=[key])
+    for thisKey in allKeys:
+        if thisKey == 'space':
+            break
 
 if __name__ == "__main__":
     win = visual.Window([1000, 800])
