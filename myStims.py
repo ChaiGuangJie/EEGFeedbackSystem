@@ -197,10 +197,14 @@ def DrawTextStim(win,text):
     text.draw()
     win.flip()
 
-def WaitOneKeyPress(key):
+def WaitOneKeyPress(win,key,textStim = None):
+    if textStim is not None:
+        text = visual.TextStim(win, text=textStim)
+        text.draw()
+        win.flip()
     allKeys = event.waitKeys(keyList=[key])
     for thisKey in allKeys:
-        if thisKey == 'space':
+        if thisKey == key:
             break
 
 if __name__ == "__main__":
@@ -242,7 +246,7 @@ if __name__ == "__main__":
         arrow.draw(2)
 
 
-        countDown = CountDown(win)
+        countDown = CountDown(win,duration=4)
         #transport.run()
         countDown.draw(slightDraw=False)
         #transport.pause()
