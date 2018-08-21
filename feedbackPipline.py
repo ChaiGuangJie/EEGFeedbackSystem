@@ -45,7 +45,7 @@ class FeedbackPipline():
         event.globalKeys.add(key='escape', func=self.quit, name='quit')
         event.globalKeys.add(key='s',modifiers=['ctrl'],func=self.save_raw_file,name='name')
 
-        self.nOfflineTrial = 20
+        self.nOfflineTrial = 10
         self.nOnlineTrial = 10
 
         self.record_array = None
@@ -71,13 +71,13 @@ class FeedbackPipline():
     def _save_raw_file(self,fullFileName):
         if fullFileName is not None: #todo 应该要等到全部缓存数据都保存进self.record_array再写入文件
             sio.savemat(fullFileName,{'epoch':self.record_array,'info':self.scanClient.basicInfo})
-            print('save file')
+            print(fullFileName,'已保存')
 
     def run_offline(self):
         fixation = Fixation(self.win, 30)
         arrow_dict = {'right': RightArrow(self.win, 60), 'left': LeftArrow(self.win, 60)}
         countDown = CountDown(self.win, duration=4)
-
+        self.scanClient.start_receive_thread(self.info['nchan'])
         # todo 如何更新？(每十次以后用新样本更新csp lda?)
         DrawTextStim(self.win, "请选择文件保存位置")
         self.save_raw_file()
@@ -99,8 +99,9 @@ class FeedbackPipline():
 
             self.scanClient.stop_sending_data()  # 暂停发送数据
 
-            WaitOneKeyPress('right','按 → 键继续')
+            WaitOneKeyPress(self.win,'right','按 → 键继续')
             # arrow.endDraw()
+        DrawTextStim(self.win, "实验结束，正在保存文件")
         if self.saveFileName is not None:
             self._save_raw_file(self.saveFileName)
         else:
@@ -125,7 +126,8 @@ class FeedbackPipline():
         DrawTextStim(self.win,"请选择文件保存位置")
         self.save_raw_file()
         WaitOneKeyPress(self.win,'space','按空格键开始')
-        for i in range(self.nOnlineTrial):
+        nTrial = self.nOnlineTrial
+        while nTrial>0:
             self.scanClient.start_sending_data() #开始发送数据
             #self.begin_record()
             fixation.draw(2)
@@ -151,6 +153,7 @@ class FeedbackPipline():
                 if thisKey == 'left':
                     fs.removeLastFeature()
                 elif thisKey == 'right':
+                    nTrial = nTrial-1
                     break
 
             fs.endDrawAllFeatures()
@@ -159,6 +162,7 @@ class FeedbackPipline():
             # y.endDraw()
             fixation.endDraw()
 
+        DrawTextStim(self.win, "实验结束，正在保存文件")
         if self.saveFileName is not None:
             self._save_raw_file(self.saveFileName)
         else:
@@ -361,8 +365,8 @@ class FeedbackPipline():
     #     self._set_record_flag(False)
 
 if __name__ == '__main__':
-
-    pipline = FeedbackPipline(host='127.0.0.1', port=5555)
+    pipline = FeedbackPipline()
+    # pipline = FeedbackPipline(host='127.0.0.1', port=5555)
     pipline.run()
     # features = pipline._create_features_from_offline_data()
     # print(len(features))
