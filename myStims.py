@@ -3,7 +3,8 @@ from psychopy.visual import shape, circle
 import math
 import random
 
-__all__ = ['Fixation','RightArrow','LeftArrow','Xaxis','Yaxis','CountDown','featureStim','DrawTextStim','WaitOneKeyPress']
+__all__ = ['Fixation','RightArrow','LeftArrow','Xaxis','Yaxis',
+           'CountDown','featureStim','DrawTextStim','WaitOneKeyPress','TargetWindow','Bullet']
 
 class ClueStim():
     def __init__(self, win, vertices, lineWidth=1.5):
@@ -32,9 +33,9 @@ class ClueStim():
             self.win.flip()
 
 
-def Fixation(win, radius):
-    return ClueStim(win, vertices=((0, -radius), (0, radius),
-                                   (0, 0), (-radius, 0), (radius, 0)))
+def Fixation(win, radius,x=0,y=0):
+    return ClueStim(win, vertices=((x, -radius+y), (x, radius+y),
+                                   (x, y), (-radius+x, y), (radius+x, y)))
 
 
 def RightArrow(win, radius):
@@ -47,20 +48,27 @@ def LeftArrow(win, radius):
                                    (-radius, 0), (-radius / 2, -radius / 2), (-radius, 0), (0, 0)))
 
 
-def Xaxis(win, radius=None):
+def TargetWindow(win):
+    half_x = win.size[0]/2
+    half_y = win.size[1]/2
+    centerX = 0
+    centerY = 1.5 * half_y
+    return ClueStim(win,vertices=((-half_x*0.70,half_y-1),(-0.65*half_x,0.2*-half_y),(0.65*half_x,0.2*-half_y),(half_x*0.7,half_y-1),(-half_x*0.7,half_y-1))),(centerX,centerY)
+
+def Xaxis(win, radius=None,cutOut=0.9,y=0):
     if radius:
         halfAxis = radius
     else:
-        halfAxis = win.size.min() * 0.9 / 2.0
-    return ClueStim(win, vertices=((-halfAxis, 0), (halfAxis, 0)), lineWidth=1)
+        halfAxis = cutOut * win.size[0] / 2.0
+    return ClueStim(win, vertices=((-halfAxis, y), (halfAxis, y)), lineWidth=1)
 
 
-def Yaxis(win, radius=None):
+def Yaxis(win, radius=None,cutOut=0.9,x=0):
     if radius:
         halfAxis = radius
     else:
-        halfAxis = win.size.min() * 0.9 / 2.0
-    return ClueStim(win, vertices=((0, halfAxis), (0, -halfAxis)), lineWidth=1)
+        halfAxis = cutOut * win.size[1] / 2.0
+    return ClueStim(win, vertices=((x, halfAxis), (x, -halfAxis)), lineWidth=1)
 
 
 class CountDown():
@@ -206,6 +214,79 @@ def WaitOneKeyPress(win,key,textStim = None):
     for thisKey in allKeys:
         if thisKey == key:
             break
+
+class Bullet():
+    def __init__(self,win,targetCenter,dotRaduis =5, duration = 1):#targetCenter = (x,y)
+        self.bulletList = []
+        self.win = win
+        # self.start_y = start_y
+        self.targetCenter = targetCenter
+        self.dotRaduis = dotRaduis
+        self.duration = duration
+        # self.velocity = initVelocity
+        self.colorDict = {
+            -1: 'blue',
+            1: 'red',
+            2: 'green',
+            3: 'yellow'
+        }
+        self.startPoint = (0,-win.size[1]/2)
+        # self.verticalDistance = math.sqrt(
+        #     abs(targetCenter[0]-self.startPoint[0]) * abs(targetCenter[0]-self.startPoint[0])
+        #     + abs(targetCenter[1] - self.startPoint[1]) * abs(targetCenter[1] - self.startPoint[1]))
+
+
+    def add_new_bullet(self, x, y, label): #destination = (x,y)
+        bullet = circle.Circle(
+                    self.win,
+                    radius=self.dotRaduis,
+                    pos=self.startPoint,
+                    lineWidth=0,
+                    fillColor=self.colorDict[label],
+                    units='pix',
+                )
+        # radiusDistance = math.sqrt(abs(x-self.targetCenter[0])*abs(x-self.targetCenter[0])+abs(y-self.targetCenter[1])*abs(y-self.targetCenter[1]))
+        # realDistance = math.sqrt(
+        #     abs(x-self.startPoint[0])*abs(x-self.startPoint[0])
+        #     + abs(y-self.startPoint[1])*abs(y-self.startPoint[1]))
+        # v_realDis = realDistance/self.duration
+        # v_verticalDis = v_realDis * self.verticalDistance/realDistance
+        # v_x = v_realDis * (x-self.startPoint[0])/realDistance
+        # v_y = v_realDis * abs(y-self.targetCenter[1])/realDistance
+        v_x = (x - self.startPoint[0])/self.duration #duration为小数的时候会严重影响计算落点的准确性！
+        v_y = abs(y - self.startPoint[1])/self.duration
+        self.bulletList.append({'bullet':bullet,
+                                'x' : x,
+                                'y' : y,
+                                'v_x':v_x,
+                                'v_y':v_y,
+                                'arrived':False})
+
+    def update_bullets(self,dt):
+        # d = dt * self.velocity
+        for b in self.bulletList:
+            if not b['arrived']:
+                dy = b['v_y'] * dt
+                dx = b['v_x'] * dt
+                b['bullet'].pos += (dx, dy)
+                # if b['bullet'].pos[0] >= b['x']:
+                #     b['bullet'].pos = (b['x'], b['bullet'].pos[1])
+                # if b['bullet'].pos[1] >= b['y']:
+                #     b['bullet'].pos = (b['bullet'].pos[0], b['y'])
+                if  b['bullet'].pos[1] >= b['y']: #b['bullet'].pos[0] >= b['x'] and
+                    print(b['bullet'].pos,(b['x'], b['y']))
+                    b['bullet'].pos = (b['x'], b['y'])
+                    b['arrived'] = True
+                # todo 判断是否到达终点，如果到达，将pos改为终点值,并将arrived置为True
+                # print(b['bullet'].pos[0])
+            else:
+                if b['bullet'].opacity > 0.2:
+                    b['bullet'].opacity -= 0.01
+            b['bullet'].draw()
+        self.win.flip()
+
+
+
 
 if __name__ == "__main__":
     win = visual.Window([1000, 800])
