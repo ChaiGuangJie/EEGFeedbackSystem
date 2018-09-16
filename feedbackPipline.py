@@ -21,7 +21,7 @@ from myEpochs import _process_raw_buffer
 from psychopy import visual,core,event
 
 class FeedbackPipline():
-    def __init__(self,host = '10.0.180.151',port = 4000,size = (800,600)):
+    def __init__(self,host = '10.0.181.150',port = 4000,size = (800,600)):
         self.tmin, self.tmax = -0.1, 4.
         self.event_id = dict(left=1, right=2)
 
@@ -36,9 +36,9 @@ class FeedbackPipline():
 
         self.rt_epochs = RtEpochs(self.scanClient, event_id = list(self.event_id.values()), tmin=self.tmin, tmax = self.tmax,
                              picks=picks, stim_channel='STI 014', isi_max=60 * 60.)
-        self.rt_epochs._process_raw_buffer = _process_raw_buffer #todo 是否可行？
-
-        self.filt = FilterEstimator(self.info, 7, 30, filter_length='auto', fir_design='firwin')
+        # self.rt_epochs._process_raw_buffer = _process_raw_buffer #todo 是否可行？
+        self.data_win_size = 801
+        self.filt = FilterEstimator(self.info, 7, 30, filter_length=self.data_win_size, fir_design='firwin')
         self.csp = CSP(n_components=5, reg=None, log=True, norm_trace=False)
         self.lda = LinearDiscriminantAnalysis(n_components=1)
         self.tsne = TSNE(n_components=2, random_state=0)
@@ -65,6 +65,8 @@ class FeedbackPipline():
         self.OfflineClassBalance = 0
 
         self.y_offset = 0.35
+
+        self.record_array_index = -1
 
     def save_raw_file(self,saveAtMoment=False):
 
@@ -124,14 +126,14 @@ class FeedbackPipline():
         features = self._create_features_from_offline_data()
         if len(features)==0:return
         self.rt_epochs.start()
-        fs = featureStim(self.win, features=features, dotRaduis=10)  # features=features
+        fs = BulletFeaturesStim(self.win, features=features, dotRaduis=10)  # features=features
         fixation = Fixation(self.win, 30)
         x = Xaxis(self.win, radius=self.win.size[0] / 2.0)
         # y = Yaxis(self.win, radius=self.win.size[1] / 2.0)
         arrow_dict = {'right': RightArrow(self.win, 60), 'left': LeftArrow(self.win, 60)}
-        countDown = CountDown(self.win,duration=4)
-        targetWin,(centerX,centerY) = TargetWindow(self.win)
-        bullet = Bullet(targetCenter=(centerX,centerY))
+        # countDown = CountDown(self.win,duration=4)
+        # targetWin,(centerX,centerY) = TargetWindow(self.win)
+        # bullet = Bullet(self.win,dotRaduis=30)
         #todo 如何更新？(每十次以后用新样本更新csp lda?)
         DrawTextStim(self.win,"请选择文件保存位置")
         self.save_raw_file()
@@ -146,16 +148,17 @@ class FeedbackPipline():
             # self.scanClient.set_event_trigger(label)
             arrow.draw(2)
             self.scanClient.set_event_trigger(label) #手动打标签
-
-            countDown.draw(slightDraw=True)#替换成小球连续发射
-
-            new_feature = self.get_new_feature(label)
-            self.scanClient.stop_sending_data() #暂停发送数据
-
+###########################################################################
+            # countDown.draw(slightDraw=True)#替换成小球连续发射
+            # new_feature = self.get_new_feature(label)
             x.startDraw()
             fixation.startDraw()
-            print(new_feature)
-            fs.drawNewFeature(new_feature)
+            self.bulletFeedback(fs,1,label)
+            self.scanClient.stop_sending_data() #暂停发送数据
+
+            # print(new_feature)
+            # fs.drawNewFeature(new_feature)
+#############################################################################
             fs.startDrawAllFeatures(gradients=True)
 
             #self.end_record()
@@ -247,6 +250,8 @@ class FeedbackPipline():
             matFile = sio.loadmat(filesToOpen[0])
             epoch = matFile['epoch']
             # info = matFile['info']
+            _epoch = self.scaler.fit_transform(epoch[:-1,:]) #todo 对除了事件通道以外的数据进行归一化
+            epoch = np.concatenate((_epoch,epoch[-1:,:]),axis=0)
             raw = mne.io.RawArray(epoch,self.info)
             # raw = mne.io.read_raw_cnt(filesToOpen[0],None)
             raw.filter(7., 30., fir_design='firwin', skip_by_annotation='edge')
@@ -255,14 +260,14 @@ class FeedbackPipline():
                                exclude=['eog', 'stim'])
             epochs = Epochs(raw, events, self.event_id, self.tmin, self.tmax, picks=picks, preload=True)
             epochs_train = epochs.copy().crop(tmin=0.8, tmax=1.6)#todo 应该去掉？
-            scores = []
-            epochs_data = epochs.get_data()
+            # scores = []
+            # epochs_data = epochs.get_data()
             epochs_data_train = epochs_train.get_data()
             labels = epochs.events[:, -1]
             cv = ShuffleSplit(10, test_size=0.2, random_state=32)
-            cv_split = cv.split(epochs_data_train)
+            # cv_split = cv.split(epochs_data_train)
 
-            clf = Pipeline([('CSP', self.csp), ('LDA', self.lda)])
+            clf = Pipeline([('CSP', self.csp),('LDA', self.lda)])
             scores = cross_val_score(clf, epochs_data_train, labels, cv=cv, n_jobs=1)
 
             # Printing the results
@@ -283,19 +288,15 @@ class FeedbackPipline():
             #     elif thisKey == 'space':
             #         break
             self.csp.fit(epochs_data_train,np.array(labels))
-            X_train = self.csp.transform(epochs_train)
+            X_train = self.csp.transform(epochs_data_train)
             # self.tsne.fit(X_train, np.array(labels))
             # x = self.tsne.fit_transform(X_train)
             self.lda.fit(X_train, np.array(labels))
             x = self.lda.transform(X_train)
             self.scaler.fit(x)
             x = self.scaler.transform(x)
-            # self.lda.fit(X_train, np.array(labels))
-            # x = self.lda.transform(X_train)
-            # self.overall_scale = x.max(axis=0) if x.max(axis=0) > abs(x.min(axis=0)) else abs(x.min(axis=0))
-            # self.overall_scale = self.overall_scale[0]
-            for _x,_y, label in zip(x[:, 0],x[:, 1], labels):
-                features.append((_x , _y + self.y_offset, label)) #  features.append((_x , 0, label))
+            for _x, label in zip(x[:, 0], labels):#todo lda二分类只能分为两类
+                features.append((_x , 0, label)) #两类lda只能映射到一维
 
 
             ###############################################################################
@@ -352,24 +353,38 @@ class FeedbackPipline():
         else:
             self.record_array = np.concatenate((self.record_array, raw_buffer), axis=1)
 
-    def next(self,windowSize):#todo shape[0]=68?
-        if self.record_array.shape[1] > windowSize:
-            return self.record_array[:,-windowSize:]
+    def next(self,windowSize):#shape =(68,samples)
+        self.record_array_index = self.record_array.shape[1]-1-windowSize
+        if self.record_array_index>=0:
+            windowData = self.record_array[:,self.record_array_index:-1]
+            return windowData
         else:
             return None
 
-    def bulletFeedback(self,targetWin,bullet,intervalTime,currentLabel,dataWinSize=200,duration=4):
-        targetWin.startDraw()
+    def bulletFeedback(self,bullet,intervalTime,currentLabel,duration=4):
+        # targetWin.startDraw()
         clock = core.Clock()
+        generateTime = clock.getTime()
         while clock.getTime() < duration:
-            core.wait(intervalTime)
-            window_data = self.next(windowSize=dataWinSize)
-            if window_data is not None:
-                csp_result = self.csp.transform(window_data)
+            if (clock.getTime() - generateTime) > intervalTime:
+                window_data = self.next(windowSize=self.data_win_size)
+                generateTime = clock.getTime()
+            # if window_data is not None:
+                window_data = np.delete(window_data,[67,66,65,42],axis=0)
+                scaler_result = self.scaler.transform(window_data)
+                # filter_result = self.filt.transform(scaler_result[np.newaxis,:])
+                csp_result = self.csp.transform(scaler_result[np.newaxis,:]) #[0]
                 lda_result = self.lda.transform(csp_result)
-                scaled_data = self.scaler.transform(lda_result) #scaled_data格式？
-                bullet.add_new_bullet(scaled_data[0],scaled_data[1],currentLabel)
-                bullet.update_bullets(0.01) #参数用来控制速度
+                # scaled_data = self.scaler.transform(lda_result) #scaled_data格式？
+                bullet.add_new_bullet(lda_result[0][0],0,currentLabel)
+            bullet.update_bullets(0.01) #参数用来控制速度
+        while True:
+            bullet.update_bullets(0.01)
+            # print('update')
+            if bullet.bulletList[-1]['arrived']:
+                bullet.bulletList = []
+                break
+        print('allArrived')
 
 
 
@@ -383,9 +398,10 @@ class FeedbackPipline():
         _stop = round(epoch.shape[-1] * 1.8 / 4)
         epoch_data = self.filt.transform(epoch)[:, :, _start:_stop]
         X_train = self.csp.transform(epoch_data) #todo 跟离线维度一致才能transform
-        feature_x = self.lda.transform(X_train)#todo 换tsne
+        feature_x = self.lda.transform(X_train)
+        feature_x = self.scaler.transform(feature_x)
         feature_y = 0
-        return (feature_x/self.overall_scale,feature_y,_label)
+        return (feature_x,feature_y,_label)
 
     def quit(self):
         self.scanClient.unregister_receive_callback(self._record_raw_buffer)
@@ -402,15 +418,21 @@ class FeedbackPipline():
     #     self._set_record_flag(False)
 
 if __name__ == '__main__':
-    # pipline = FeedbackPipline()
-    pipline = FeedbackPipline(host='127.0.0.1', port=5555)
-    # pipline.run()
-    features = pipline._create_features_from_offline_data()
+    pipline = FeedbackPipline()
+    # pipline = FeedbackPipline(host='127.0.0.1', port=5555)
+    pipline.run_online()
+    # try:
+    #     # pipline.run()
+    #     pipline.run_online()
+    # except Exception as e:
+    #     print(e)
+    #     pipline.quit()
+    # features = pipline._create_features_from_offline_data()
 
-    fs = featureStim(pipline.win, features=features, dotRaduis=10)
-    TargetWindow(pipline.win).startDraw()
-    fs.startDrawAllFeatures()
-    WaitOneKeyPress(pipline.win, 'space')
+    # fs = featureStim(pipline.win, features=features, dotRaduis=10)
+    # TargetWindow(pipline.win).startDraw()
+    # fs.startDrawAllFeatures()
+    # WaitOneKeyPress(pipline.win, 'space')
     # print(len(features))
     # pipline.quit()
     # pipline = None

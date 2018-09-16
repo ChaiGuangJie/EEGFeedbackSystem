@@ -4,7 +4,7 @@ import math
 import random
 
 __all__ = ['Fixation','RightArrow','LeftArrow','Xaxis','Yaxis',
-           'CountDown','featureStim','DrawTextStim','WaitOneKeyPress','TargetWindow','Bullet']
+           'CountDown','featureStim','DrawTextStim','WaitOneKeyPress','TargetWindow','BulletFeaturesStim']
 
 class ClueStim():
     def __init__(self, win, vertices, lineWidth=1.5):
@@ -215,22 +215,24 @@ def WaitOneKeyPress(win,key,textStim = None):
         if thisKey == key:
             break
 
-class Bullet():
-    def __init__(self,win,targetCenter,dotRaduis =5, duration = 1):#targetCenter = (x,y)
+class BulletFeaturesStim(featureStim):
+    def __init__(self,win,features,dotRaduis, duration = 1):#targetCenter = (x,y)
         self.bulletList = []
-        self.win = win
+        # self.win = win
         # self.start_y = start_y
-        self.targetCenter = targetCenter
-        self.dotRaduis = dotRaduis
+        # self.targetCenter = targetCenter
+        # self.dotRaduis = dotRaduis
         self.duration = duration
         # self.velocity = initVelocity
-        self.colorDict = {
-            -1: 'blue',
-            1: 'red',
-            2: 'green',
-            3: 'yellow'
-        }
+        # self.colorDict = {
+        #     -1: 'blue',
+        #     1: 'red',
+        #     2: 'green',
+        #     3: 'yellow'
+        # }
+        self.allArrived = False
         self.startPoint = (0,-win.size[1]/2)
+        super().__init__(win,features,dotRaduis)
         # self.verticalDistance = math.sqrt(
         #     abs(targetCenter[0]-self.startPoint[0]) * abs(targetCenter[0]-self.startPoint[0])
         #     + abs(targetCenter[1] - self.startPoint[1]) * abs(targetCenter[1] - self.startPoint[1]))
@@ -261,9 +263,11 @@ class Bullet():
                                 'v_x':v_x,
                                 'v_y':v_y,
                                 'arrived':False})
+        self.featureDots.append(bullet)
 
     def update_bullets(self,dt):
         # d = dt * self.velocity
+        self.allArrived = True
         for b in self.bulletList:
             if not b['arrived']:
                 dy = b['v_y'] * dt
@@ -273,15 +277,20 @@ class Bullet():
                 #     b['bullet'].pos = (b['x'], b['bullet'].pos[1])
                 # if b['bullet'].pos[1] >= b['y']:
                 #     b['bullet'].pos = (b['bullet'].pos[0], b['y'])
-                if  b['bullet'].pos[1] >= b['y']: #b['bullet'].pos[0] >= b['x'] and
+                if  b['bullet'].pos[1] >= b['y'] or b['bullet'].pos[0] >= b['x']: #b['bullet'].pos[0] >= b['x'] and
                     print(b['bullet'].pos,(b['x'], b['y']))
                     b['bullet'].pos = (b['x'], b['y'])
                     b['arrived'] = True
-                # todo 判断是否到达终点，如果到达，将pos改为终点值,并将arrived置为True
+                    print("arrived")
+                # if b['bullet'].pos[0] >= b['x']:
+                #     b['bullet'].pos = (b['x'], b['y'])
+                #     b['arrived'] = True
+                # 判断是否到达终点，如果到达，将pos改为终点值,并将arrived置为True
                 # print(b['bullet'].pos[0])
             else:
                 if b['bullet'].opacity > 0.2:
                     b['bullet'].opacity -= 0.01
+                self.allArrived = False
             b['bullet'].draw()
         self.win.flip()
 
