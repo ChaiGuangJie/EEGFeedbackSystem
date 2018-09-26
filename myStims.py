@@ -3,8 +3,19 @@ from psychopy.visual import shape, circle
 import math
 import random
 
-__all__ = ['Fixation','RightArrow','LeftArrow','Xaxis','Yaxis',
-           'CountDown','featureStim','DrawTextStim','WaitOneKeyPress','TargetWindow','BulletFeaturesStim']
+__all__ = [
+    'Fixation',
+    'RightArrow',
+    'LeftArrow',
+    'Xaxis',
+    'Yaxis',
+    'CountDown',
+    'featureStim',
+    'DrawTextStim',
+    'WaitOneKeyPress',
+    'TargetWindow',
+    'BulletFeaturesStim']
+
 
 class ClueStim():
     def __init__(self, win, vertices, lineWidth=1.5):
@@ -33,9 +44,9 @@ class ClueStim():
             self.win.flip()
 
 
-def Fixation(win, radius,x=0,y=0):
-    return ClueStim(win, vertices=((x, -radius+y), (x, radius+y),
-                                   (x, y), (-radius+x, y), (radius+x, y)))
+def Fixation(win, radius, x=0, y=0):
+    return ClueStim(win, vertices=((x, -radius + y), (x, radius + y),
+                                   (x, y), (-radius + x, y), (radius + x, y)))
 
 
 def RightArrow(win, radius):
@@ -49,13 +60,15 @@ def LeftArrow(win, radius):
 
 
 def TargetWindow(win):
-    half_x = win.size[0]/2
-    half_y = win.size[1]/2
+    half_x = win.size[0] / 2
+    half_y = win.size[1] / 2
     centerX = 0
     centerY = 1.5 * half_y
-    return ClueStim(win,vertices=((-half_x*0.70,half_y-1),(-0.65*half_x,0.2*-half_y),(0.65*half_x,0.2*-half_y),(half_x*0.7,half_y-1),(-half_x*0.7,half_y-1))),(centerX,centerY)
+    return ClueStim(win, vertices=((-half_x * 0.70, half_y - 1), (-0.65 * half_x, 0.2 * -half_y), (0.65 * \
+                    half_x, 0.2 * -half_y), (half_x * 0.7, half_y - 1), (-half_x * 0.7, half_y - 1))), (centerX, centerY)
 
-def Xaxis(win, radius=None,cutOut=0.9,y=0):
+
+def Xaxis(win, radius=None, cutOut=0.9, y=0):
     if radius:
         halfAxis = radius
     else:
@@ -63,7 +76,7 @@ def Xaxis(win, radius=None,cutOut=0.9,y=0):
     return ClueStim(win, vertices=((-halfAxis, y), (halfAxis, y)), lineWidth=1)
 
 
-def Yaxis(win, radius=None,cutOut=0.9,x=0):
+def Yaxis(win, radius=None, cutOut=0.9, x=0):
     if radius:
         halfAxis = radius
     else:
@@ -72,13 +85,13 @@ def Yaxis(win, radius=None,cutOut=0.9,x=0):
 
 
 class CountDown():
-    def __init__(self, win,duration=2):
+    def __init__(self, win, duration=2):
         self.win = win
         self.degree = 2 * math.pi / 60 / duration
         self.radius = 20
         self.pointSegments = []
 
-        for i in range(60*duration+1):
+        for i in range(60 * duration + 1):
             x = self.radius * math.sin(i * self.degree)
             y = self.radius * math.cos(i * self.degree)
             self.pointSegments.append((x, y))
@@ -100,7 +113,7 @@ class CountDown():
             lastY = y
             self.pathSegments.append(path)
 
-    def draw(self,slightDraw = False):  # todo 参数改为持续时间
+    def draw(self, slightDraw=False):  # todo 参数改为持续时间
         pathLen = len(self.pathSegments)
         if slightDraw:
             for s in self.pathSegments:
@@ -132,35 +145,37 @@ class featureStim():
             2: 'green',
             3: 'yellow'
         }
-        self.winScale = win.size.min() / 2.0
+        # self.winScale =1 #win.size.min() / 2.0
         if self.features:
             for (x, y, label) in features:
                 dot = circle.Circle(
                     win,
                     radius=dotRaduis,
-                    pos=(x * self.winScale, y * self.winScale),
+                    pos=(x , y),
                     lineWidth=0,
                     fillColor=self.colorDict[label],
                     opacity=0.1,
-                    units='pix',
+                    units='norm',
                 )
                 self.featureDots.append(dot)
 #                    lineColor=self.colorDict[label],
-    def startDrawAllFeatures(self, highlightLast=True, gradients = False):
+
+    def startDrawAllFeatures(self, gradients=False):
+        # self.win.flip()
         for p in self.featureDots[:-5]:
             p.autoDraw = True
             # p.draw()
-        for p,o in zip(self.featureDots[-5:],[0.2,0.4,0.6,0.8,1.0]):
+        for p, o in zip(self.featureDots[-5:], [0.2, 0.4, 0.6, 0.8, 1.0]):
             p.autoDraw = True
             if gradients:
                 p.opacity = o
-        if highlightLast:
-            highlightCircle = circle.Circle(self.win,
-                                            radius=self.dotRaduis + 1,
-                                            pos=self.featureDots[-1].pos,
-                                            units='pix',
-                                            lineWidth=2)
-            highlightCircle.draw()
+        # if highlightLast:
+        #     highlightCircle = circle.Circle(self.win,
+        #                                     radius=self.dotRaduis + 1,
+        #                                     pos=self.featureDots[-1].pos,
+        #                                     units='pix',
+        #                                     lineWidth=2)
+        #     highlightCircle.draw()
         self.win.flip()
 
     def endDrawAllFeatures(self):
@@ -200,12 +215,14 @@ class featureStim():
         lastFeature = self.featureDots.pop()
         lastFeature.autoDraw = False
 
-def DrawTextStim(win,text):
-    text = visual.TextStim(win,text=text)
+
+def DrawTextStim(win, text):
+    text = visual.TextStim(win, text=text)
     text.draw()
     win.flip()
 
-def WaitOneKeyPress(win,key,textStim = None):
+
+def WaitOneKeyPress(win, key, textStim=None):
     if textStim is not None:
         text = visual.TextStim(win, text=textStim)
         text.draw()
@@ -215,86 +232,84 @@ def WaitOneKeyPress(win,key,textStim = None):
         if thisKey == key:
             break
 
+
 class BulletFeaturesStim(featureStim):
-    def __init__(self,win,features,dotRaduis, duration = 1):#targetCenter = (x,y)
+    def __init__(self, win, features, dotRaduis, dt):  # targetCenter = (x,y)
         self.bulletList = []
-        # self.win = win
-        # self.start_y = start_y
-        # self.targetCenter = targetCenter
-        # self.dotRaduis = dotRaduis
-        self.duration = duration
-        # self.velocity = initVelocity
-        # self.colorDict = {
-        #     -1: 'blue',
-        #     1: 'red',
-        #     2: 'green',
-        #     3: 'yellow'
-        # }
+        # self.duration = duration
         self.allArrived = False
-        self.startPoint = (0,-win.size[1]/2)
-        super().__init__(win,features,dotRaduis)
+        self.startPoint = (0, -1)  # -win.size[1]/2
+        # self.distance = distance
+        self.V = 10
+        self.dt = dt
+        # self.coor_compensate = -win.size[1]/2
+        self.dotRaduis = (0.03 * dotRaduis / 20, 0.04 * dotRaduis / 20)
+        super().__init__(win, features, self.dotRaduis)
         # self.verticalDistance = math.sqrt(
         #     abs(targetCenter[0]-self.startPoint[0]) * abs(targetCenter[0]-self.startPoint[0])
         #     + abs(targetCenter[1] - self.startPoint[1]) * abs(targetCenter[1] - self.startPoint[1]))
 
-
-    def add_new_bullet(self, x, y, label): #destination = (x,y)
+    def _add_new_bullet(self, x, y, label):  # destination = (x,y)
         bullet = circle.Circle(
-                    self.win,
-                    radius=self.dotRaduis,
-                    pos=self.startPoint,
-                    lineWidth=0,
-                    fillColor=self.colorDict[label],
-                    units='pix',
-                )
-        # radiusDistance = math.sqrt(abs(x-self.targetCenter[0])*abs(x-self.targetCenter[0])+abs(y-self.targetCenter[1])*abs(y-self.targetCenter[1]))
-        # realDistance = math.sqrt(
-        #     abs(x-self.startPoint[0])*abs(x-self.startPoint[0])
-        #     + abs(y-self.startPoint[1])*abs(y-self.startPoint[1]))
-        # v_realDis = realDistance/self.duration
-        # v_verticalDis = v_realDis * self.verticalDistance/realDistance
-        # v_x = v_realDis * (x-self.startPoint[0])/realDistance
-        # v_y = v_realDis * abs(y-self.targetCenter[1])/realDistance
-        v_x = (x - self.startPoint[0])/self.duration #duration为小数的时候会严重影响计算落点的准确性！
-        v_y = abs(y - self.startPoint[1])/self.duration
-        self.bulletList.append({'bullet':bullet,
-                                'x' : x,
-                                'y' : y,
-                                'v_x':v_x,
-                                'v_y':v_y,
-                                'arrived':False})
-        self.featureDots.append(bullet)
+            self.win,
+            radius=self.dotRaduis,
+            pos=self.startPoint,
+            lineWidth=0,
+            fillColor=self.colorDict[label],
+            units='norm',
+        )
+        # v_x = (x - self.startPoint[0])/self.duration #duration为小数的时候会严重影响计算落点的准确性！
+        # v_y = abs(y - self.startPoint[1])/self.duration
+        self.bulletList.append({'bullet': bullet,
+                                'target_x': x,
+                                'target_y': y,
+                                'tan': x / (y + 1),
+                                'arrived': False})
+        # self.featureDots.append(bullet)
+        # return bullet
+        self.featureDots.append(bullet)  # 父类画全部点的时候会用到
 
-    def update_bullets(self,dt):
+    def _update_all_bullets(self):
         # d = dt * self.velocity
         self.allArrived = True
         for b in self.bulletList:
             if not b['arrived']:
-                dy = b['v_y'] * dt
-                dx = b['v_x'] * dt
+                self.allArrived = False
+                dy = self.V * self.dt  # b['v_y'] * self.dt
+                dx = dy * b['tan']  # b['v_x'] * self.dt
                 b['bullet'].pos += (dx, dy)
-                # if b['bullet'].pos[0] >= b['x']:
-                #     b['bullet'].pos = (b['x'], b['bullet'].pos[1])
-                # if b['bullet'].pos[1] >= b['y']:
-                #     b['bullet'].pos = (b['bullet'].pos[0], b['y'])
-                if  b['bullet'].pos[1] >= b['y'] or b['bullet'].pos[0] >= b['x']: #b['bullet'].pos[0] >= b['x'] and
-                    print(b['bullet'].pos,(b['x'], b['y']))
-                    b['bullet'].pos = (b['x'], b['y'])
+                # print(b['bullet'].pos[1])
+                if b['bullet'].pos[1] >= b['target_y']:
+                    # or b['bullet'].pos[0] >= b['target_x']: #b['bullet'].pos[0] >= b['x'] and
+                    # print(b['bullet'].pos,(b['target_x'], b['target_y']))
+                    b['bullet'].pos = (b['target_x'], b['target_y'])
                     b['arrived'] = True
                     print("arrived")
-                # if b['bullet'].pos[0] >= b['x']:
-                #     b['bullet'].pos = (b['x'], b['y'])
-                #     b['arrived'] = True
-                # 判断是否到达终点，如果到达，将pos改为终点值,并将arrived置为True
-                # print(b['bullet'].pos[0])
             else:
                 if b['bullet'].opacity > 0.2:
                     b['bullet'].opacity -= 0.01
-                self.allArrived = False
             b['bullet'].draw()
         self.win.flip()
 
-
+    def start_fire_bullet(self, getData, label, delay, interval, duration):
+        # new_bullets = []
+        self.bulletList = []
+        clock = core.Clock()
+        core.wait(delay)  # todo
+        startTime = -interval
+        while True:
+            if clock.getTime() - startTime > interval:
+                x, y = getData()  # todo y 不能是0
+                if y == -1:
+                    return
+                self._add_new_bullet(x, y, label)
+                startTime = clock.getTime()
+            self._update_all_bullets()
+            if clock.getTime() > duration:
+                break
+        print('allArrived:',self.allArrived)
+        while not self.allArrived:
+            self._update_all_bullets()
 
 
 if __name__ == "__main__":
@@ -322,8 +337,8 @@ if __name__ == "__main__":
 
         def createRandomArrow():
             arrowDict = {
-                1 : RightArrow(win,20),
-                -1: LeftArrow(win,20)
+                1: RightArrow(win, 20),
+                -1: LeftArrow(win, 20)
             }
             arrow = random.choice([-1, 1])
             return arrowDict[arrow]
@@ -332,29 +347,29 @@ if __name__ == "__main__":
         # l.draw(3)
         # r = RightArrow(win,20)
         # r.draw(5)
-        arrow  = createRandomArrow()
+        arrow = createRandomArrow()
         arrow.draw(2)
 
-
-        countDown = CountDown(win,duration=4)
-        #transport.run()
+        countDown = CountDown(win, duration=4)
+        # transport.run()
         countDown.draw(slightDraw=False)
-        #transport.pause()
+        # transport.pause()
 
         fixation.startDraw()
-        x = Xaxis(win,radius=win.size[0]/2.0)
+        x = Xaxis(win, radius=win.size[0] / 2.0)
         y = Yaxis(win)
         x.startDraw()
-        #y.startDraw()
-        #y.draw(5)
+        # y.startDraw()
+        # y.draw(5)
         # x.endDraw()
 
         _label = random.choice([-1, 1])
-        fs.drawNewFeature((random.gauss(_label/2.0,0.2), 0, _label)) #random.uniform(-1, 1)
+        # random.uniform(-1, 1)
+        fs.drawNewFeature((random.gauss(_label / 2.0, 0.2), 0, _label))
         fs.startDrawAllFeatures(gradients=True)
-        #core.wait(5)
-        print('trial ',trial,' end')
-        trial+=1
+        # core.wait(5)
+        print('trial ', trial, ' end')
+        trial += 1
 
         allKeys = event.waitKeys(keyList=['left', 'right'])
         for thisKey in allKeys:
@@ -366,6 +381,5 @@ if __name__ == "__main__":
         fs.endDrawAllFeatures()
         arrow.endDraw()
         x.endDraw()
-        #y.endDraw()
+        # y.endDraw()
         fixation.endDraw()
-

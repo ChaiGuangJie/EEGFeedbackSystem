@@ -126,7 +126,7 @@ class FeedbackPipline():
         features = self._create_features_from_offline_data()
         if len(features)==0:return
         self.rt_epochs.start()
-        fs = BulletFeaturesStim(self.win, features=features, dotRaduis=10)  # features=features
+        fs = BulletFeaturesStim(self.win,features=features,dotRaduis=20,dt=0.001) # 通过dt控制小球发射速度
         fixation = Fixation(self.win, 30)
         x = Xaxis(self.win, radius=self.win.size[0] / 2.0)
         # y = Yaxis(self.win, radius=self.win.size[1] / 2.0)
@@ -153,7 +153,8 @@ class FeedbackPipline():
             # new_feature = self.get_new_feature(label)
             x.startDraw()
             fixation.startDraw()
-            self.bulletFeedback(fs,1,label)
+            # self.bulletFeedback(fs,1,label)
+            fs.start_fire_bullet(self.getData, label, delay=4, interval=0, duration=4) #通过参数控制出球数量与时间间隔
             self.scanClient.stop_sending_data() #暂停发送数据
 
             # print(new_feature)
@@ -358,39 +359,54 @@ class FeedbackPipline():
         else:
             self.record_array = np.concatenate((self.record_array, raw_buffer), axis=1)
 
-    def next(self,windowSize):#shape =(68,samples)
-        self.record_array_index = self.record_array.shape[1]-1-windowSize
-        if self.record_array_index>=0:
-            windowData = self.record_array[:,self.record_array_index:-1]
-            return windowData
+    # def next(self,windowSize):#shape =(68,samples)
+    #     self.record_array_index = self.record_array.shape[1]-1-windowSize
+    #     if self.record_array_index>=0:
+    #         windowData = self.record_array[:,self.record_array_index:-1]
+    #         return windowData
+    #     else:
+    #         return None
+
+    def _current_win_data(self,winSize):
+        if self.record_array.shape[1]>winSize:
+            return self.record_array[:,self.record_array_index:-1]
         else:
             return None
 
-    def bulletFeedback(self,bullet,intervalTime,currentLabel,duration=4):
-        # targetWin.startDraw()
-        clock = core.Clock()
-        generateTime = clock.getTime()
-        while clock.getTime() < duration:
-            if (clock.getTime() - generateTime) > intervalTime:
-                window_data = self.next(windowSize=self.data_win_size)
-                generateTime = clock.getTime()
-            # if window_data is not None:
-                window_data = np.delete(window_data,[67,66,65,42],axis=0)
-
-                # filter_result = self.filt.transform(scaler_result[np.newaxis,:])
-                csp_result = self.csp.transform(window_data[np.newaxis,:]) #[0]
-                scaler_result = self.scaler.transform(csp_result)
-                lda_result = self.lda.transform(scaler_result)
-                # scaled_data = self.scaler.transform(lda_result) #scaled_data格式？
-                bullet.add_new_bullet(lda_result[0][0],0,currentLabel)
-            bullet.update_bullets(0.01) #参数用来控制速度
-        while True:
-            bullet.update_bullets(0.01)
-            # print('update')
-            if bullet.bulletList[-1]['arrived']:
-                bullet.bulletList = []
-                break
-        print('allArrived')
+    def getData(self):
+        window_data = self._current_win_data(self.data_win_size)
+        if window_data:
+            csp_result = self.csp.transform(window_data[np.newaxis, :])  # [0]
+            scaler_result = self.scaler.transform(csp_result)
+            lda_result = self.lda.transform(scaler_result)
+            #todo scale lda_result 的范围使其在[-1,1]
+            return lda_result[0][0], 0.5
+        #todo None的情况
+    # def bulletFeedback(self,bullet,intervalTime,currentLabel,duration=4):
+    #     # targetWin.startDraw()
+    #     clock = core.Clock()
+    #     generateTime = clock.getTime()
+    #     while clock.getTime() < duration:
+    #         if (clock.getTime() - generateTime) > intervalTime:
+    #             window_data = self.next(windowSize=self.data_win_size)
+    #             generateTime = clock.getTime()
+    #         # if window_data is not None:
+    #             window_data = np.delete(window_data,[67,66,65,42],axis=0)
+    #
+    #             # filter_result = self.filt.transform(scaler_result[np.newaxis,:])
+    #             csp_result = self.csp.transform(window_data[np.newaxis,:]) #[0]
+    #             scaler_result = self.scaler.transform(csp_result)
+    #             lda_result = self.lda.transform(scaler_result)
+    #             # scaled_data = self.scaler.transform(lda_result) #scaled_data格式？
+    #             bullet.add_new_bullet(lda_result[0][0],0,currentLabel)
+    #         bullet.update_bullets(0.01) #参数用来控制速度
+    #     while True:
+    #         bullet.update_bullets(0.01)
+    #         # print('update')
+    #         if bullet.bulletList[-1]['arrived']:
+    #             bullet.bulletList = []
+    #             break
+    #     print('allArrived')
 
 
 
@@ -405,7 +421,7 @@ class FeedbackPipline():
         epoch_data = self.filt.transform(epoch)[:, :, _start:_stop]
         X_train = self.csp.transform(epoch_data) #todo 跟离线维度一致才能transform
         feature_x = self.scaler.transform(X_train)
-        feature_x = self.lda.transform(feature_x)
+        feature_x = self.lda.transform(feature_x) #todo归一化，结果放缩到[-1,1]
         feature_y = 0
         return (feature_x,feature_y,_label)
 
