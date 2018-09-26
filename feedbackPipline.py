@@ -22,7 +22,7 @@ from psychopy import visual,core,event
 
 class FeedbackPipline():
     def __init__(self,host = '10.0.181.150',port = 4000,size = (800,600)):
-        self.tmin, self.tmax = -0.1, 4.
+        self.tmin, self.tmax = -1, 4.
         self.event_id = dict(left=1, right=2)
 
         self.scanClient = ScanClient(host,port)
@@ -40,19 +40,19 @@ class FeedbackPipline():
         self.data_win_size = 801
         self.filt = FilterEstimator(self.info, 7, 30, filter_length=self.data_win_size, fir_design='firwin')
         self.csp = CSP(n_components=5, reg=None, log=True, norm_trace=False)
-        self.lda = LinearDiscriminantAnalysis(n_components=1)
+        self.lda = LinearDiscriminantAnalysis()
         self.tsne = TSNE(n_components=2, random_state=0)
         self.scaler = MinMaxScaler(feature_range=(-0.5, 0.5))
 
-        self.clf = self.tsne #此处改分类器
+        # self.clf = self.tsne #此处改分类器
         # self.features = None #保存所有特征点
 
         self.win = visual.Window(size)
         event.globalKeys.add(key='escape', func=self.quit, name='quit')
         event.globalKeys.add(key='s',modifiers=['ctrl'],func=self.save_raw_file,name='name')
 
-        self.nOfflineTrial = 10
-        self.nOnlineTrial = 10
+        self.nOfflineTrial = 30
+        self.nOnlineTrial = 20
 
         self.record_array = None
         # self.record_flag = False
@@ -84,7 +84,7 @@ class FeedbackPipline():
             print(fullFileName,'已保存')
 
     def run_offline(self):
-        fixation = Fixation(self.win, 30)
+        fixation = Fixation(self.win, 60)
         arrow_dict = {'right': RightArrow(self.win, 60), 'left': LeftArrow(self.win, 60)}
         countDown = CountDown(self.win, duration=4)
         self.scanClient.start_receive_thread(self.info['nchan'])
@@ -106,7 +106,7 @@ class FeedbackPipline():
 
             self.scanClient.set_event_trigger(label)  # 手动打标签
 
-            countDown.draw(slightDraw=False)
+            countDown.draw(slightDraw=True)
 
             self.scanClient.stop_sending_data()  # 暂停发送数据
 
@@ -250,12 +250,12 @@ class FeedbackPipline():
             matFile = sio.loadmat(filesToOpen[0])
             epoch = matFile['epoch']
             # info = matFile['info']
-            _epoch = self.scaler.fit_transform(epoch[:-1,:]) #todo 对除了事件通道以外的数据进行归一化
-            epoch = np.concatenate((_epoch,epoch[-1:,:]),axis=0)
+            # _epoch = self.scaler.fit_transform(epoch[:-1,:])
+            # epoch = np.concatenate((_epoch,epoch[-1:,:]),axis=0)
             raw = mne.io.RawArray(epoch,self.info)
             # raw = mne.io.read_raw_cnt(filesToOpen[0],None)
             raw.filter(7., 30., fir_design='firwin', skip_by_annotation='edge')
-            events = find_events(raw, shortest_event=0, stim_channel='STI 014')
+            events = find_events(raw, shortest_event=1, stim_channel='STI 014')
             picks = pick_types(self.info, meg=False, eeg=True, stim=False, eog=False,
                                exclude=['eog', 'stim'])
             epochs = Epochs(raw, events, self.event_id, self.tmin, self.tmax, picks=picks, preload=True)
@@ -264,21 +264,25 @@ class FeedbackPipline():
             # epochs_data = epochs.get_data()
             epochs_data_train = epochs_train.get_data()
             labels = epochs.events[:, -1]
-            cv = ShuffleSplit(10, test_size=0.2, random_state=32)
+            cv = ShuffleSplit(20, test_size=0.2, random_state=32)
             # cv_split = cv.split(epochs_data_train)
-
-            clf = Pipeline([('CSP', self.csp),('LDA', self.lda)])
-            scores = cross_val_score(clf, epochs_data_train, labels, cv=cv, n_jobs=1)
-
-            # Printing the results
+            scores_list = []
+            for c in range(3,10):
+                self.csp = CSP(n_components=c, reg=None, log=True, norm_trace=False)
+                clf = Pipeline([('CSP', self.csp),('SCALER',self.scaler),('LDA', self.lda)])
+                scores = cross_val_score(clf, epochs_data_train, labels, cv=cv, n_jobs=1)
+                scores_list.append({c:round(float(np.mean(scores)),3)})
+                # Printing the results
             class_balance = np.mean(labels == labels[0])
             class_balance = max(class_balance, 1. - class_balance)
-            print("Classification accuracy: %f / Chance level: %f" % (np.mean(scores),
-                                                                      class_balance))
-            self.OfflineScores = np.mean(scores)
-            self.OfflineClassBalance = class_balance
-            stimText = "Classification accuracy: {0}\nChance level: {1}.\n\n空格键继续".format(np.mean(scores),
-                                                                                                 class_balance)
+            print(scores_list,class_balance)
+            # print("Classification accuracy: %f / Chance level: %f" % (np.mean(scores),
+            #                                                           class_balance))
+            # self.OfflineScores = np.mean(scores)
+            # self.OfflineClassBalance = class_balance
+            stimText = str(scores_list) + str(class_balance)
+            # stimText = "Classification accuracy: {0}\nChance level: {1}.\n\n空格键继续".format(np.mean(scores),
+            #                                                                                      class_balance)
             WaitOneKeyPress(self.win,'space',stimText)
             # DrawTextStim(self.win, stimText)
             # allKeys = event.waitKeys(keyList=['q', 'space'])
@@ -291,10 +295,11 @@ class FeedbackPipline():
             X_train = self.csp.transform(epochs_data_train)
             # self.tsne.fit(X_train, np.array(labels))
             # x = self.tsne.fit_transform(X_train)
+            self.scaler.fit(X_train)
+            X_train = self.scaler.transform(X_train)
             self.lda.fit(X_train, np.array(labels))
             x = self.lda.transform(X_train)
-            self.scaler.fit(x)
-            x = self.scaler.transform(x)
+
             for _x, label in zip(x[:, 0], labels):#todo lda二分类只能分为两类
                 features.append((_x , 0, label)) #两类lda只能映射到一维
 
@@ -371,10 +376,11 @@ class FeedbackPipline():
                 generateTime = clock.getTime()
             # if window_data is not None:
                 window_data = np.delete(window_data,[67,66,65,42],axis=0)
-                scaler_result = self.scaler.transform(window_data)
+
                 # filter_result = self.filt.transform(scaler_result[np.newaxis,:])
-                csp_result = self.csp.transform(scaler_result[np.newaxis,:]) #[0]
-                lda_result = self.lda.transform(csp_result)
+                csp_result = self.csp.transform(window_data[np.newaxis,:]) #[0]
+                scaler_result = self.scaler.transform(csp_result)
+                lda_result = self.lda.transform(scaler_result)
                 # scaled_data = self.scaler.transform(lda_result) #scaled_data格式？
                 bullet.add_new_bullet(lda_result[0][0],0,currentLabel)
             bullet.update_bullets(0.01) #参数用来控制速度
@@ -398,8 +404,8 @@ class FeedbackPipline():
         _stop = round(epoch.shape[-1] * 1.8 / 4)
         epoch_data = self.filt.transform(epoch)[:, :, _start:_stop]
         X_train = self.csp.transform(epoch_data) #todo 跟离线维度一致才能transform
-        feature_x = self.lda.transform(X_train)
-        feature_x = self.scaler.transform(feature_x)
+        feature_x = self.scaler.transform(X_train)
+        feature_x = self.lda.transform(feature_x)
         feature_y = 0
         return (feature_x,feature_y,_label)
 
@@ -408,6 +414,10 @@ class FeedbackPipline():
         self.rt_epochs.stop(stop_receive_thread=True, stop_measurement=True)
         self.win.close()
         core.quit()
+
+
+    def AccTest(self):
+        pass
     # def _set_record_flag(self,flag):
     #     self.record_flag = flag
     #
@@ -418,8 +428,8 @@ class FeedbackPipline():
     #     self._set_record_flag(False)
 
 if __name__ == '__main__':
-    pipline = FeedbackPipline()
-    # pipline = FeedbackPipline(host='127.0.0.1', port=5555)
+    # pipline = FeedbackPipline()
+    pipline = FeedbackPipline(host='127.0.0.1', port=5555)
     pipline.run_online()
     # try:
     #     # pipline.run()
