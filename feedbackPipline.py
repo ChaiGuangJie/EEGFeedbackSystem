@@ -42,7 +42,8 @@ class FeedbackPipline():
         self.csp = CSP(n_components=5, reg=None, log=True, norm_trace=False)
         self.lda = LinearDiscriminantAnalysis()
         self.tsne = TSNE(n_components=2, random_state=0)
-        self.scaler = MinMaxScaler(feature_range=(-0.5, 0.5))
+        self.scaler_befor_lda = MinMaxScaler(feature_range=(-1, 1))
+        self.scaler_after_lda = MinMaxScaler(feature_range=(-1, 1)) #是否需要？
 
         # self.clf = self.tsne #此处改分类器
         # self.features = None #保存所有特征点
@@ -270,7 +271,7 @@ class FeedbackPipline():
             scores_list = []
             for c in range(3,10):
                 self.csp = CSP(n_components=c, reg=None, log=True, norm_trace=False)
-                clf = Pipeline([('CSP', self.csp),('SCALER',self.scaler),('LDA', self.lda)])
+                clf = Pipeline([('CSP', self.csp),('SCALER_BEFOR',self.scaler_befor_lda),('LDA', self.lda),(('SCALER_AFTER',self.scaler_after_lda))])
                 scores = cross_val_score(clf, epochs_data_train, labels, cv=cv, n_jobs=1)
                 scores_list.append({c:round(float(np.mean(scores)),3)})
                 # Printing the results
@@ -296,13 +297,18 @@ class FeedbackPipline():
             X_train = self.csp.transform(epochs_data_train)
             # self.tsne.fit(X_train, np.array(labels))
             # x = self.tsne.fit_transform(X_train)
-            self.scaler.fit(X_train)
-            X_train = self.scaler.transform(X_train)
-            self.lda.fit(X_train, np.array(labels))
-            x = self.lda.transform(X_train)
+            self.scaler_befor_lda.fit(X_train)
+            X_train = self.scaler_befor_lda.transform(X_train)
 
-            for _x, label in zip(x[:, 0], labels):#todo lda二分类只能分为两类
-                features.append((_x , 0, label)) #两类lda只能映射到一维
+            self.lda.fit(X_train, np.array(labels))
+
+            self.scaler_after_lda.fit(X_train)
+            X_train = self.scaler_after_lda.transform(X_train)
+
+            x = self.lda.transform(X_train)
+            #todo 默认0.7
+            for _x, label in zip(x[:, 0.7], labels):#todo lda二分类只能分为两类
+                features.append((_x , 0.7, label)) #两类lda只能映射到一维
 
 
             ###############################################################################
@@ -377,11 +383,12 @@ class FeedbackPipline():
         window_data = self._current_win_data(self.data_win_size)
         if window_data:
             csp_result = self.csp.transform(window_data[np.newaxis, :])  # [0]
-            scaler_result = self.scaler.transform(csp_result)
+            scaler_result = self.scaler_befor_lda.transform(csp_result)
             lda_result = self.lda.transform(scaler_result)
+            scaler_result = self.scaler_after_lda.transform(lda_result)
             #todo scale lda_result 的范围使其在[-1,1]
-            return lda_result[0][0], 0.5
-        #todo None的情况
+            return scaler_result[0][0], 0.7
+        #todo None的情况 和 0.7 scaler_result.data?
     # def bulletFeedback(self,bullet,intervalTime,currentLabel,duration=4):
     #     # targetWin.startDraw()
     #     clock = core.Clock()
