@@ -299,10 +299,11 @@ class BulletFeaturesStim(featureStim):
         startTime = -interval
         while True:
             if clock.getTime() - startTime > interval:
-                x, y = getData()  # todo y 不能是0
+                x, y = getData(delay)  # todo y 不能是0
                 if y == -1:
                     return
                 self._add_new_bullet(x, y, label)
+                # print((x, y, label))
                 startTime = clock.getTime()
             self._update_all_bullets()
             if clock.getTime() > duration:
