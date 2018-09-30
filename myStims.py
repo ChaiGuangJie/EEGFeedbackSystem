@@ -293,6 +293,7 @@ class BulletFeaturesStim(featureStim):
 
     def start_fire_bullet(self, getData, label, delay, interval, duration):
         # new_bullets = []
+        # label = (label-1.5)*2
         self.bulletList = []
         clock = core.Clock()
         core.wait(delay)  # todo

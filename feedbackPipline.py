@@ -15,7 +15,7 @@ import numpy as np
 import scipy.io as sio
 from psychopy.gui import fileSaveDlg,fileOpenDlg
 from sklearn.manifold import TSNE
-from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import MinMaxScaler,Normalizer,MaxAbsScaler
 
 from myEpochs import _process_raw_buffer
 from psychopy import visual,core,event
@@ -43,8 +43,9 @@ class FeedbackPipline():
         self.csp = CSP(n_components=5, reg=None, log=True, norm_trace=False)
         self.lda = LinearDiscriminantAnalysis()
         self.tsne = TSNE(n_components=2, random_state=0)
-        self.scaler_befor_lda = MinMaxScaler(feature_range=(-1, 1))
-        self.scaler_after_lda = MinMaxScaler(feature_range=(-1, 1)) #是否需要？
+        self.scaler_befor_lda = Normalizer()
+        self.scaler_after_lda =  MaxAbsScaler()#是否需要？
+
 
         self.clf =None # Pipeline([('CSP', self.csp),('SCALER_BEFOR',self.scaler_befor_lda),('LDA', self.lda)])
         # self.features = None #保存所有特征点
@@ -112,7 +113,9 @@ class FeedbackPipline():
 
             self.scanClient.stop_sending_data()  # 暂停发送数据
 
-            WaitOneKeyPress(self.win,'right','按 → 键继续')
+            DrawTextStim(self.win,"休息四秒")
+            core.wait(4)
+            # WaitOneKeyPress(self.win,'right','按 → 键继续')
             # arrow.endDraw()
         DrawTextStim(self.win, "实验结束，正在保存文件")
         if self.saveFileName is not None:
@@ -134,8 +137,6 @@ class FeedbackPipline():
         # y = Yaxis(self.win, radius=self.win.size[1] / 2.0)
         arrow_dict = {'right': RightArrow(self.win, 60), 'left': LeftArrow(self.win, 60)}
         # countDown = CountDown(self.win,duration=4)
-        # targetWin,(centerX,centerY) = TargetWindow(self.win)
-        # bullet = Bullet(self.win,dotRaduis=30)
         #todo 如何更新？(每十次以后用新样本更新csp lda?)
         DrawTextStim(self.win,"请选择文件保存位置")
         self.save_raw_file()
@@ -165,14 +166,17 @@ class FeedbackPipline():
 #############################################################################
             fs.startDrawAllFeatures(gradients=True)
 
+            #自动控制
+            core.wait(4)
             #self.end_record()
-            allKeys = event.waitKeys(keyList=['left', 'right'])
-            for thisKey in allKeys:
-                if thisKey == 'left':
-                    fs.removeLastFeature()
-                elif thisKey == 'right':
-                    nTrial = nTrial-1
-                    break
+            # allKeys = event.waitKeys(keyList=['left', 'right'])
+            # for thisKey in allKeys:
+            #     if thisKey == 'left':
+            #         fs.removeLastFeature()
+            #     elif thisKey == 'right':
+            #         nTrial = nTrial-1
+            #         break
+
 
             fs.endDrawAllFeatures()
             # arrow.endDraw()
@@ -203,48 +207,49 @@ class FeedbackPipline():
 
         self.quit()
 
-    def _createFeatures(self):
-        #读取离线数据并生成features
-        features = []
-        subject = 2
-        runs = [4, 8, 12]  # Motor imagery: left vs right hand
-
-        raw_fnames = eegbci.load_data(subject, runs, path="D:/Project/python/EEG/mne/mne_data")
-        raw_files = [read_raw_edf(f, preload=True, stim_channel='auto') for f in
-                     raw_fnames]
-        raw = concatenate_raws(raw_files)
-
-        # strip channel names of "." characters
-        raw.rename_channels(lambda x: x.strip('.'))
-
-        # Apply band-pass filter
-        # raw.filter(12., 24., fir_design='firwin', skip_by_annotation='edge')
-
-        events = find_events(raw, shortest_event=0, stim_channel='STI 014')
-
-        picks = pick_types(raw.info, meg=False, eeg=True, stim=False, eog=False,
-                           exclude='bads')
-
-        # Read epochs (train will be done only between 1 and 2s)
-        # Testing will be done with a running classifier
-        epochs = Epochs(raw, events, self.event_id, self.tmin, self.tmax, proj=True, picks=picks,
-                        baseline=None, preload=True)
-        label_list = epochs.events[:, -1]
-        epochs_train = epochs.copy().crop(tmin=1.5, tmax=2.5) #todo 应该作为全局变量？
-        epochs_data_train = epochs_train.get_data()
-        X_train = self.csp.fit_transform(epochs_data_train, np.array(label_list)) #todo 离线和在线时的epochs_data_train shape需要一致
-        self.lda.fit(X_train, np.array(label_list))
-        x = self.lda.transform(X_train)
-        self.overall_scale = x.max(axis=0) if x.max(axis=0) > abs(x.min(axis=0)) else abs(x.min(axis=0))
-        self.overall_scale = self.overall_scale[0]
-        for _x, label in zip(x[:, 0], label_list):
-            features.append((_x / self.overall_scale, 0, label))
-        return features
+    # def _createFeatures(self):
+    #     #读取离线数据并生成features
+    #     features = []
+    #     subject = 2
+    #     runs = [4, 8, 12]  # Motor imagery: left vs right hand
+    #
+    #     raw_fnames = eegbci.load_data(subject, runs, path="D:/Project/python/EEG/mne/mne_data")
+    #     raw_files = [read_raw_edf(f, preload=True, stim_channel='auto') for f in
+    #                  raw_fnames]
+    #     raw = concatenate_raws(raw_files)
+    #
+    #     # strip channel names of "." characters
+    #     raw.rename_channels(lambda x: x.strip('.'))
+    #
+    #     # Apply band-pass filter
+    #     # raw.filter(12., 24., fir_design='firwin', skip_by_annotation='edge')
+    #
+    #     events = find_events(raw, shortest_event=0, stim_channel='STI 014')
+    #
+    #     picks = pick_types(raw.info, meg=False, eeg=True, stim=False, eog=False,
+    #                        exclude='bads')
+    #
+    #     # Read epochs (train will be done only between 1 and 2s)
+    #     # Testing will be done with a running classifier
+    #     epochs = Epochs(raw, events, self.event_id, self.tmin, self.tmax, proj=True, picks=picks,
+    #                     baseline=None, preload=True)
+    #     label_list = epochs.events[:, -1]
+    #     epochs_train = epochs.copy().crop(tmin=1.5, tmax=2.5) #todo 应该作为全局变量？
+    #     epochs_data_train = epochs_train.get_data()
+    #     X_train = self.csp.fit_transform(epochs_data_train, np.array(label_list)) #todo 离线和在线时的epochs_data_train shape需要一致
+    #     self.lda.fit(X_train, np.array(label_list))
+    #     x = self.lda.transform(X_train)
+    #     self.overall_scale = x.max(axis=0) if x.max(axis=0) > abs(x.min(axis=0)) else abs(x.min(axis=0))
+    #     self.overall_scale = self.overall_scale[0]
+    #     for _x, label in zip(x[:, 0], label_list):
+    #         features.append((_x / self.overall_scale, 0, label))
+    #     return features
 
 
     def _create_features_from_offline_data(self):
         # todo 提取特征并展示分类效果 over time
         from sklearn.model_selection import ShuffleSplit, cross_val_score
+        from sklearn.metrics import confusion_matrix
 
         import matplotlib.pyplot as plt
         features = []
@@ -269,12 +274,13 @@ class FeedbackPipline():
             # epochs_data = epochs.get_data()
             epochs_data_train = epochs_train.get_data()
             labels = epochs.events[:, -1]
+            # labels = (epochs.events[:, -1]-1.5)*2 #todo self.scaler_label
             cv = ShuffleSplit(10, test_size=0.2, random_state=32)
             # cv_split = cv.split(epochs_data_train)
             scores_list = []
             for c in range(3,10):
                 self.csp = CSP(n_components=c, reg=None, log=True, norm_trace=False)
-                self.clf = Pipeline([('CSP', self.csp),('LDA', self.lda)]) #,('SCALER_BEFOR',self.scaler_befor_lda)('SCALER_AFTER',self.scaler_after_lda)
+                self.clf = Pipeline([('CSP', self.csp),('SCALER_BEFOR',self.scaler_befor_lda),('LDA', self.lda)]) #,('SCALER_AFTER',self.scaler_after_lda)
                 scores = cross_val_score(self.clf, epochs_data_train, labels, cv=cv, n_jobs=1)
                 scores_list.append((c,round(float(np.mean(scores)),3)))
                 # Printing the results
@@ -314,15 +320,22 @@ class FeedbackPipline():
             ############################################################
             # print(scores_list[0][0])
             self.csp = CSP(n_components=scores_list[0][0], reg=None, log=True, norm_trace=False)
-            self.clf = Pipeline([('CSP', self.csp),('LDA', self.lda)])#('SCALER_BEFOR',self.scaler_befor_lda)
+            self.clf = Pipeline([('CSP', self.csp),('SCALER_BEFOR',self.scaler_befor_lda),('LDA', self.lda)])#('SCALER_BEFOR',self.scaler_befor_lda)
+            self.clf.fit(epochs_data_train,labels)
+            # clf_result = self.clf.predict_proba(epochs_data_train)
+            #########################################################
+            predict_labels = self.clf.predict(epochs_data_train)
+            confusion = confusion_matrix(labels,predict_labels)
+            print(confusion)
+            ##########################################################
             clf_result = self.clf.fit_transform(epochs_data_train,labels)
             #todo clf_result的均值是0？
-            print(clf_result)
+            print(clf_result,np.mean(clf_result))
             # print('#######################')
             clf_result_minmax = self.scaler_after_lda.fit_transform(clf_result)
-            print(clf_result_minmax)
-            for _x, label in zip(clf_result_minmax, labels):#todo lda二分类只能分为两类
-                features.append((_x[0] , 0.7, label)) #两类lda只能映射到一维
+            # print(clf_result_minmax)
+            for _x, label in zip(clf_result_minmax, labels):#todo lda二分类只能分为两类 #clf_result_minmax
+                features.append((_x[0], 0.7, label)) #两类lda只能映射到一维
 
 
             ###############################################################################
@@ -368,6 +381,16 @@ class FeedbackPipline():
         return features
 
 
+    # def feature_map(self,clf_result,labels):
+    #     posList,navList = [],[]
+    #     for r,label in zip(clf_result,labels):
+    #         if r>=0:
+    #             posList.append(r)
+    #         else:
+    #             navList.append(r)
+    #     m = np.mean(np.mean(posList),np.mean(navList))
+
+
     def _createRandomLabel(self):
         key = random.choice(list(self.event_id.keys()))
         return  key,self.event_id[key]
@@ -409,11 +432,12 @@ class FeedbackPipline():
             # epochs_data = epochs.copy().get_data()#.crop(tmin=0.5, tmax=3.5)  # todo 应该去掉？
             epochs_data = raw._data[picks]
             # print('..')
+            # lda_result = self.clf.predict_log_proba(epochs_data[np.newaxis, :])
             lda_result =self.clf.transform(epochs_data[np.newaxis, :])#
             print(lda_result)
             scaler_result = self.scaler_after_lda.transform(lda_result)
-            print(scaler_result)
-            return scaler_result[0][0], 0.7
+            # print(scaler_result)
+            return max(scaler_result[0]), 0.7 #scaler_result[0][0]
         #todo None的情况 和 0.7 scaler_result.data?
     # def bulletFeedback(self,bullet,intervalTime,currentLabel,duration=4):
     #     # targetWin.startDraw()
