@@ -284,7 +284,7 @@ class BulletFeaturesStim(featureStim):
                     # print(b['bullet'].pos,(b['target_x'], b['target_y']))
                     b['bullet'].pos = (b['target_x'], b['target_y'])
                     b['arrived'] = True
-                    print("arrived")
+                    # print("arrived")
             else:
                 if b['bullet'].opacity > 0.2:
                     b['bullet'].opacity -= 0.01
@@ -309,7 +309,7 @@ class BulletFeaturesStim(featureStim):
             self._update_all_bullets()
             if clock.getTime() > duration:
                 break
-        print('allArrived:',self.allArrived)
+        # print('allArrived:',self.allArrived)
         while not self.allArrived:
             self._update_all_bullets()
 

@@ -54,7 +54,7 @@ class FeedbackPipline():
         event.globalKeys.add(key='escape', func=self.quit, name='quit')
         event.globalKeys.add(key='s',modifiers=['ctrl'],func=self.save_raw_file,name='name')
 
-        self.nOfflineTrial = 30
+        self.nOfflineTrial = 20
         self.nOnlineTrial = 20
 
         self.record_array = None
@@ -70,6 +70,13 @@ class FeedbackPipline():
         self.y_offset = 0.35
 
         # self.record_array_index = -1
+
+        self.online_test_epochs = None
+        self.online_test_labels = None
+        self.online_index = 0
+        self.shuffer_labels = ['left','right']*(self.nOfflineTrial//2)
+        random.shuffle(self.shuffer_labels)
+        # self.label_index = 0
 
     def save_raw_file(self,saveAtMoment=False):
 
@@ -101,11 +108,11 @@ class FeedbackPipline():
             # self.begin_record()
             fixation.draw(2)
 
-            orien, label = self._createRandomLabel()
+            orien, label = self._createRandomLabel(i)
 
             arrow = arrow_dict[orien]
             # self.scanClient.set_event_trigger(label)
-            arrow.draw(2)
+            arrow.draw(1)
 
             self.scanClient.set_event_trigger(label)  # 手动打标签
 
@@ -146,7 +153,15 @@ class FeedbackPipline():
             self.scanClient.start_sending_data() #开始发送数据
             #self.begin_record()
             fixation.draw(2)
-            orien,label = self._createRandomLabel()
+            # orien,label = self._createRandomLabel()
+            label = self.online_test_labels[self.online_index]
+            orien = ''
+            if int(label)==1:
+                orien ='left'
+            elif int(label)==2:
+                orien = 'right'
+            else:
+                raise 'label error'
             arrow = arrow_dict[orien]
             # self.scanClient.set_event_trigger(label)
             arrow.draw(2)
@@ -275,7 +290,7 @@ class FeedbackPipline():
             epochs_data_train = epochs_train.get_data()
             labels = epochs.events[:, -1]
             # labels = (epochs.events[:, -1]-1.5)*2 #todo self.scaler_label
-            cv = ShuffleSplit(10, test_size=0.2, random_state=32)
+            cv = ShuffleSplit(10, test_size=0.2, random_state=12)
             # cv_split = cv.split(epochs_data_train)
             scores_list = []
             for c in range(3,10):
@@ -319,23 +334,27 @@ class FeedbackPipline():
             # x = self.lda.transform(X_train)
             ############################################################
             # print(scores_list[0][0])
+            self.online_test_epochs = epochs_data_train
+            self.online_test_labels = labels
             self.csp = CSP(n_components=scores_list[0][0], reg=None, log=True, norm_trace=False)
             self.clf = Pipeline([('CSP', self.csp),('SCALER_BEFOR',self.scaler_befor_lda),('LDA', self.lda)])#('SCALER_BEFOR',self.scaler_befor_lda)
             self.clf.fit(epochs_data_train,labels)
             # clf_result = self.clf.predict_proba(epochs_data_train)
             #########################################################
-            predict_labels = self.clf.predict(epochs_data_train)
-            confusion = confusion_matrix(labels,predict_labels)
-            print(confusion)
+            # predict_labels = self.clf.predict(epochs_data_train)
+            # confusion = confusion_matrix(labels,predict_labels)
+            # print(confusion)
             ##########################################################
-            clf_result = self.clf.fit_transform(epochs_data_train,labels)
+            # clf_result = self.clf.transform(epochs_data_train)
             #todo clf_result的均值是0？
-            print(clf_result,np.mean(clf_result))
+            clf_proba_result = self.clf.predict_proba(epochs_data_train)
+            # print(clf_result,np.mean(clf_result))
             # print('#######################')
-            clf_result_minmax = self.scaler_after_lda.fit_transform(clf_result)
+            # clf_result_minmax = self.scaler_after_lda.fit_transform(clf_result)
             # print(clf_result_minmax)
-            for _x, label in zip(clf_result_minmax, labels):#todo lda二分类只能分为两类 #clf_result_minmax
-                features.append((_x[0], 0.7, label)) #两类lda只能映射到一维
+            for _x, label in zip(clf_proba_result, labels):#todo lda二分类只能分为两类 #clf_result_minmax
+                dir = (np.argmax(_x)-0.5)*2
+                features.append((max(_x)*dir, 0.7, label)) #两类lda只能映射到一维
 
 
             ###############################################################################
@@ -391,8 +410,9 @@ class FeedbackPipline():
     #     m = np.mean(np.mean(posList),np.mean(navList))
 
 
-    def _createRandomLabel(self):
-        key = random.choice(list(self.event_id.keys()))
+    def _createRandomLabel(self, i):
+        # key = random.choice(list(self.event_id.keys()))
+        key = self.shuffer_labels[i]
         return  key,self.event_id[key]
 
     #册到myClient作为回调
@@ -416,28 +436,35 @@ class FeedbackPipline():
         else:
             return None
 
+    def _mock_current_win_data(self,winSize):
+        r = self.online_test_epochs[self.online_index]
+        self.online_index += 1
+        return r
+
+
     def getData(self,winDuration):
         # print('size:',len(window_data))
         winSize = int(self.info['sfreq'] * winDuration)
-        window_data = self._current_win_data(winSize)
+        window_data = self._mock_current_win_data(winSize)
+        # window_data = self._current_win_data(winSize)
         # window_data[-1,1:4] = label
         if window_data is not None:
-            raw = mne.io.RawArray(window_data, self.info)
-            # raw = mne.io.read_raw_cnt(filesToOpen[0],None)
-            raw.filter(7., 30., fir_design='firwin', skip_by_annotation='edge')
-            # events = find_events(raw, shortest_event=1, stim_channel='STI 014')
-            picks = pick_types(self.info, meg=False, eeg=True, stim=False, eog=False,
-                               exclude=['eog', 'stim'])
-            # epochs = Epochs(raw, events, self.event_id, self.tmin, self.tmax, picks=picks, preload=True)
-            # epochs_data = epochs.copy().get_data()#.crop(tmin=0.5, tmax=3.5)  # todo 应该去掉？
-            epochs_data = raw._data[picks]
+            epochs_data = window_data
+            # raw = mne.io.RawArray(window_data, self.info)
+            # raw.filter(7., 30., fir_design='firwin', skip_by_annotation='edge')
+            # picks = pick_types(self.info, meg=False, eeg=True, stim=False, eog=False,
+            #                    exclude=['eog', 'stim'])
+            #         # epochs = Epochs(raw, events, self.event_id, self.tmin, self.tmax, picks=picks, preload=True)
+            #         # epochs_data = epochs.copy().get_data()#.crop(tmin=0.5, tmax=3.5)  # todo 应该去掉？
+            # epochs_data = raw._data[picks]
             # print('..')
-            # lda_result = self.clf.predict_log_proba(epochs_data[np.newaxis, :])
-            lda_result =self.clf.transform(epochs_data[np.newaxis, :])#
-            print(lda_result)
-            scaler_result = self.scaler_after_lda.transform(lda_result)
+            lda_proba_result = self.clf.predict_proba(epochs_data[np.newaxis, :])
+            # lda_result =self.clf.transform(epochs_data[np.newaxis, :])#
+            print(lda_proba_result)
+            # scaler_result = self.scaler_after_lda.transform(lda_result)
             # print(scaler_result)
-            return max(scaler_result[0]), 0.7 #scaler_result[0][0]
+            dir = (np.argmax(lda_proba_result[0])-0.5)*2
+            return max(lda_proba_result[0])*dir, 0.7 #scaler_result[0][0]
         #todo None的情况 和 0.7 scaler_result.data?
     # def bulletFeedback(self,bullet,intervalTime,currentLabel,duration=4):
     #     # targetWin.startDraw()
@@ -501,16 +528,18 @@ class FeedbackPipline():
     #     self._set_record_flag(False)
 
 if __name__ == '__main__':
-    pipline = FeedbackPipline()
+    pipline = FeedbackPipline(host='192.168.1.107',size=(1920,1080))
     # pipline = FeedbackPipline(host='127.0.0.1', port=5555)
     # pipline.run_online()
+    # pipline.run()
+
     try:
         pipline.run()
         # pipline.run_online()
     except Exception as e:
         print(e)
         pipline.quit()
-    # features = pipline._create_features_from_offline_data()
+    features = pipline._create_features_from_offline_data()
 
     # fs = featureStim(pipline.win, features=features, dotRaduis=10)
     # TargetWindow(pipline.win).startDraw()

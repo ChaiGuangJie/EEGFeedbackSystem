@@ -20,7 +20,7 @@ def load_epochs_data(raw, event_id, tmin, tmax, exclude=('eog','stim')):
     # Testing will be done with a running classifier
     epochs = Epochs(raw, events, event_id, tmin, tmax, proj=True, picks=picks,
                     baseline=None, preload=True)
-    epochs_train = epochs.copy().crop(tmin=0.8, tmax=1.6)#todo
+    epochs_train = epochs.copy().crop(tmin=0.5, tmax=3.5)#todo
     labels = epochs.events[:, -1] #- 1
     epochs_data_train = epochs_train.get_data()
 
@@ -29,7 +29,7 @@ def load_epochs_data(raw, event_id, tmin, tmax, exclude=('eog','stim')):
 def csp_eeg_classify(epochs_data_train,labels):
     scores_list = []
     for c in range(3,10):
-        cv = ShuffleSplit(20, test_size=0.2, random_state=32)
+        cv = ShuffleSplit(20, test_size=0.2, random_state=1)
         scaler = MinMaxScaler(feature_range=(-0.5, 0.5))#StandardScaler() #MinMaxScaler()#
         lda = LinearDiscriminantAnalysis()
         csp = CSP(n_components=c, reg=None, log=True, norm_trace=False)
@@ -106,7 +106,7 @@ def load_my_data():
     # info['bads'].append('eog')
 
 
-    matFile = sio.loadmat("D:/temp/EEG_DATA\EEGData/四秒内任意次真实左肘下右肘上_20trial_自动控制_样本均匀.mat")
+    matFile = sio.loadmat("D:\Temp\EEGData2\想象左右肘.mat")
     epoch = matFile['epoch']
     # info = matFile['info']
     # epoch = np.concatenate((epoch, epoch[-1:, :]), axis=0)
@@ -118,8 +118,8 @@ def load_my_data():
 
 if __name__=='__main__':
 
-    # raw,event_id,tmin,tmax = standard_load(subject=4,runType=1)
-    raw, event_id, tmin, tmax = load_my_data()
+    raw,event_id,tmin,tmax = standard_load(subject=1,runType=3)
+    # raw, event_id, tmin, tmax = load_my_data()
     epochs_data_train, labels = load_epochs_data(raw,event_id,tmin,tmax)
 
     r = csp_eeg_classify(epochs_data_train,labels)
