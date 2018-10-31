@@ -22,6 +22,7 @@ from psychopy import visual,core,event
 from sklearn.pipeline import Pipeline
 
 from Classify_Model import ClassifyModel
+from EEG_Data_Loader import EEG_Data_Loader
 import json
 
 class FeedbackPipline():
@@ -47,6 +48,7 @@ class FeedbackPipline():
         # self.scaler_after_lda =  MaxAbsScaler()#是否需要？
         #
         #
+        self.eeg_data_loader = None
         self.clf =None # Pipeline([('CSP', self.csp),('SCALER_BEFOR',self.scaler_befor_lda),('LDA', self.lda)])
         # self.features = None #保存所有特征点
 
@@ -73,12 +75,15 @@ class FeedbackPipline():
         self.score_list = None #离线交叉验证分数
         self.class_balance = None
 
-        self.online_test_epochs = None
+        self.online_test_data = None
         self.online_test_labels = None
         self.online_index = 0
         self.shuffer_labels = ['left','right']*(self.nOfflineTrial//2)
         random.shuffle(self.shuffer_labels)
         # self.label_index = 0
+
+        self.x_left_index = 0
+        self.x_right_index = 0
 
         self.winSize = 3
         self.stride = 2
@@ -225,12 +230,15 @@ class FeedbackPipline():
 
     def _mock_run_online(self):
         features = self._create_features_from_offline_data()
+        self.online_test_data,self.online_test_labels = self.eeg_data_loader.load_train_data()#.load_mock_online_data()
+        self.test_left_data = self.online_test_data[self.online_test_labels==self.eeg_data_loader.event_id['left']]
+        self.test_right_data = self.online_test_data[self.online_test_labels==self.eeg_data_loader.event_id['right']]
         fs = BulletFeaturesStim(self.win,features=features,dotRaduis=20,dt=0.001) # 通过dt控制小球发射速度
         arrow_dict = {'right': RightArrow(self.win, 60), 'left': LeftArrow(self.win, 60)}
         nTrial = self.nOnlineTrial
 
         while nTrial > 0:
-            label = self.clf.labels[self.online_index]
+            label = self.online_test_labels[self.online_index]
             if int(label)==1:
                 orien ='left'
             elif int(label)==2:
@@ -240,11 +248,13 @@ class FeedbackPipline():
             arrow = arrow_dict[orien]
             # self.scanClient.set_event_trigger(label)
             arrow.draw(2)
-            fs.start_fire_bullet(self.getData, label, delay=1, interval=1, duration=1)  # 通过参数控制出球数量与时间间隔
+            fs.start_fire_bullet(self.getData, label, delay=1, interval=0.8, duration=4)  # 通过参数控制出球数量与时间间隔
             # WaitOneKeyPress(self.win,'space')
             fs.startDrawAllFeatures(gradients=True)
             core.wait(0.1)
             # fs.endDrawAllFeatures()
+            nTrial -= 1
+            self.online_index+=1
 
     def run(self):
 
@@ -308,7 +318,8 @@ class FeedbackPipline():
         filesToOpen = fileOpenDlg(tryFilePath="D:\\temp\\EEG_DATA",prompt='打开 EEG Epoch 数据',allowed="Matlab file (*.mat) ;; CNT file (*.cnt)")
         if filesToOpen is not None:
             DrawTextStim(self.win, "正在训练分类器")
-            self.clf = ClassifyModel(t_winSize=3,t_stride=2,trainFilename=filesToOpen[0])
+            self.eeg_data_loader = EEG_Data_Loader(t_winSize=3,t_stride=1,filename=filesToOpen[0])
+            self.clf = ClassifyModel(self.eeg_data_loader)
             scores_list, class_balance = self.clf.cross_val_score()
             self.clf.train_model()
             # matFile = sio.loadmat(filesToOpen[0])
@@ -481,8 +492,16 @@ class FeedbackPipline():
             return None
 
     def _mock_current_win_data(self,winSize):
-        r = self.clf.train_data[self.online_index] #[:,1000:2000]
-        self.online_index += 1
+        ###############################################
+        label = self.online_test_labels[self.online_index]
+        if label==1:
+            r = self.test_left_data[self.x_left_index]
+            self.x_left_index+=1
+        elif label==2:
+            r = self.test_right_data[self.x_right_index]
+            self.x_right_index+=1
+        # r = self.online_test_data[self.online_index] #[:,1000:2000]
+        # self.online_index += 1
         return r
 
     def getData(self,winDuration): #在线采集到的数据长度跟离线不相等是否有影响？
@@ -553,7 +572,7 @@ class FeedbackPipline():
     #     return (feature_x,feature_y,_label)
 
     def quit(self):
-        self.scanClient.unregister_receive_callback(self._record_raw_buffer)
+        # self.scanClient.unregister_receive_callback(self._record_raw_buffer)
         # self.rt_epochs.stop(stop_receive_thread=True, stop_measurement=True)
         self.win.close()
         core.quit()
