@@ -315,7 +315,17 @@ if __name__ == '__main__':
         print(buffer)
         print(len(buffer))
         # print(buffer['head'][0][2]==2)
-    c.register_receive_callback(show_rect)
+
+
+    record_array = None
+    def _record_raw_buffer(self, raw_buffer):
+        global record_array
+        if record_array is None:
+            record_array = raw_buffer
+        else:
+            record_array = np.concatenate((self.record_array, raw_buffer), axis=1)
+
+    c.register_receive_callback(_record_raw_buffer)
     info = c.get_measurement_info()
 
     # c.start_receive_thread(info['nchan'])

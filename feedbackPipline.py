@@ -470,7 +470,7 @@ class FeedbackPipline():
         key = self.shuffer_labels[i]
         return  key,self.event_id[key]
 
-    #册到myClient作为回调
+    #注册到myClient作为回调
     def _record_raw_buffer(self,raw_buffer):
         if self.record_array is None:
             self.record_array = raw_buffer
